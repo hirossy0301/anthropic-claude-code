@@ -1,6 +1,6 @@
 """コマンドライン: python -m boatrace.cli <command>
 
-  download --start 2023-10-01 --end 2026-09-28   公式データを取得 (要ネットワーク許可)
+  download --start 2023-10-01 --end 2026-09-28   公式データを取得 (--workers 3 で並列)
   ingest                                         data/raw を DB に取り込み
   demo-data --days 120                           合成データを data/raw に生成 (動作確認用)
   weather --start 2023-10-01 --end 2026-09-30    場ごとの気温を取得 (Open-Meteo)
@@ -42,6 +42,7 @@ def main(argv=None) -> None:
     s = sub.add_parser("download")
     s.add_argument("--start", type=date.fromisoformat, required=True)
     s.add_argument("--end", type=date.fromisoformat, required=True)
+    s.add_argument("--workers", type=int, default=1, help="並列数 (サーバー負荷を考え 3 以下を推奨)")
     sub.add_parser("ingest")
     s = sub.add_parser("weather")
     s.add_argument("--start", type=date.fromisoformat, required=True)
@@ -67,7 +68,7 @@ def main(argv=None) -> None:
 
     if a.cmd == "download":
         from .download import download_range
-        download_range(a.start, a.end)
+        download_range(a.start, a.end, workers=a.workers)
     elif a.cmd == "ingest":
         db.ingest_dir(db.connect())
     elif a.cmd == "weather":

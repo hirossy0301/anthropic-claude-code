@@ -28,7 +28,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r requirements.txt
 
 # 実データ（直近3年）
-python -m boatrace.cli download --start 2023-10-01 --end 2026-09-28
+python -m boatrace.cli download --start 2023-10-01 --end 2026-09-28 --workers 3   # 約2.5時間
 python -m boatrace.cli ingest
 python -m boatrace.cli weather --start 2023-10-01 --end 2026-09-30   # 気温 (Open-Meteo)
 python -m boatrace.cli backtest --cutoff 2026-04-01
@@ -45,5 +45,5 @@ streamlit run app.py
 
 - 取得先として `www1.mbrace.or.jp`（公式データ）と `archive-api.open-meteo.com` / `api.open-meteo.com`（気温）への接続が必要です。
 - **パーサー、気温の取得、24場の水面の分類は、実データでまだ検証していません。** 開発環境から公式サイトに接続できなかったためです。初回の `ingest` の後は、件数（1日あたり 出走数 ≈ レース数×6）を確認してください。
-- 3年分の取得には、1.5秒間隔で約2,200リクエスト、1時間程度かかります。
+- 3年分は約2,200ファイルです。公式サーバーは1ファイルの応答に約11秒かかるため、1本ずつだと約7.5時間、`--workers 3` で約2.5時間かかります。途中で止めても、再実行すれば取得済みの日を飛ばして続きから取得します。
 - 控除率は約25%です。確率予測が当たっても、回収率100%を超えるとは限りません。合成データでのバックテストでも、回収率は約75%（還元率そのもの）でした。
