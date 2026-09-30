@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>競艇統計予想 仕様書</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: 一段組みの技術文書。広い画面では左に目次、狭い画面では目次が上に来る */
+:root {
+  --bg: #f6f8f9;
+  --surface: #ffffff;
+  --fg: #16232b;
+  --muted: #5a6b75;
+  --line: #d6dee3;
+  --accent: #0b6e8a;        /* 水面の青 */
+  --accent-soft: #e2f0f4;
+  --warn: #9a5b00;
+  --warn-soft: #fbf1e1;
+  --code-bg: #eef2f4;
+  /* 艇番カラー (1白 2黒 3赤 4青 5黄 6緑) */
+  --lane1: #ffffff; --lane1-fg: #16232b;
+  --lane2: #1b1b1b; --lane2-fg: #ffffff;
+  --lane3: #d7263d; --lane3-fg: #ffffff;
+  --lane4: #1f5fbf; --lane4-fg: #ffffff;
+  --lane5: #f2c418; --lane5-fg: #16232b;
+  --lane6: #1f9a57; --lane6-fg: #ffffff;
+  --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", "Meiryo", sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f171c; --surface: #16222a; --fg: #e3eaee; --muted: #93a4ae; --line: #2a3a44;
+    --accent: #5cc3dd; --accent-soft: #15323c; --warn: #f0b35a; --warn-soft: #33260f;
+    --code-bg: #1c2b34; --lane1: #f4f6f7; --lane2: #000000; --lane2-fg: #ffffff;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f171c; --surface: #16222a; --fg: #e3eaee; --muted: #93a4ae; --line: #2a3a44;
+  --accent: #5cc3dd; --accent-soft: #15323c; --warn: #f0b35a; --warn-soft: #33260f;
+  --code-bg: #1c2b34; --lane1: #f4f6f7; --lane2: #000000; --lane2-fg: #ffffff;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg);
+  font-family: var(--font-body); font-size: 15px; line-height: 1.8;
+  padding-inline: 16px; padding-block: 32px 64px;
+}
+.wrap { max-width: 1080px; margin: 0 auto; display: grid; gap: 40px; grid-template-columns: 200px minmax(0, 1fr); }
+@media (max-width: 820px) { .wrap { grid-template-columns: minmax(0, 1fr); gap: 24px; } }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 13px; }
+@media (max-width: 820px) { nav.toc { position: static; } }
+nav.toc p { margin: 0 0 8px; font-weight: 700; letter-spacing: .08em; color: var(--muted); font-size: 12px; }
+nav.toc ol { margin: 0; padding-left: 1.3em; display: grid; gap: 4px; }
+nav.toc a { color: var(--fg); text-decoration: none; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--accent); text-decoration: underline; }
+main { min-width: 0; max-width: 46em; }
+header.doc { border-bottom: 2px solid var(--fg); padding-bottom: 16px; margin-bottom: 8px; }
+header.doc .eyebrow { font-size: 12px; letter-spacing: .12em; color: var(--muted); margin: 0; }
+h1 { font-size: 30px; line-height: 1.35; margin: 4px 0 8px; font-weight: 700; text-wrap: balance; }
+header.doc .meta { margin: 0; font-size: 13px; color: var(--muted); font-family: var(--font-mono); }
+h2 { font-size: 21px; margin: 56px 0 12px; padding-top: 8px; border-top: 1px solid var(--line); text-wrap: balance; scroll-margin-top: 16px; }
+h2 .num { font-family: var(--font-mono); color: var(--accent); font-weight: 500; margin-right: 8px; }
+h3 { font-size: 16.5px; margin: 32px 0 8px; text-wrap: balance; }
+p, ul, ol { margin: 0 0 12px; }
+a { color: var(--accent); }
+code { font-family: var(--font-mono); font-size: .88em; background: var(--code-bg); padding: 1px 5px; border-radius: 3px; }
+pre { font-family: var(--font-mono); font-size: 13px; line-height: 1.6; background: var(--code-bg); padding: 14px 16px; border-radius: 4px; overflow-x: auto; margin: 0 0 16px; }
+pre code { background: none; padding: 0; font-size: inherit; }
+.table-wrap { overflow-x: auto; margin: 0 0 16px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; line-height: 1.6; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-weight: 700; background: var(--accent-soft); white-space: nowrap; }
+tr:last-child td { border-bottom: 0; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-mono); white-space: nowrap; }
+td code { white-space: nowrap; }
+.note { border: 1px solid var(--warn); background: var(--warn-soft); padding: 12px 16px; border-radius: 4px; margin: 0 0 16px; }
+.note strong { color: var(--warn); }
+.formula { font-family: var(--font-mono); font-size: 14px; background: var(--surface); border: 1px solid var(--line); padding: 14px 16px; border-radius: 4px; overflow-x: auto; margin: 0 0 16px; white-space: nowrap; }
+.flow { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); counter-reset: step; }
+.flow li { background: var(--surface); border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; font-size: 13px; line-height: 1.5; counter-increment: step; }
+.flow li::before { content: counter(step); display: block; font-family: var(--font-mono); color: var(--accent); font-size: 12px; }
+.flow b { display: block; font-size: 14px; }
+.flow span { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; }
+.lanes { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.lane { display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; border-radius: 3px; font-family: var(--font-mono); font-weight: 500; font-size: 13px; border: 1px solid var(--line); }
+.l1 { background: var(--lane1); color: var(--lane1-fg); } .l2 { background: var(--lane2); color: var(--lane2-fg); }
+.l3 { background: var(--lane3); color: var(--lane3-fg); } .l4 { background: var(--lane4); color: var(--lane4-fg); }
+.l5 { background: var(--lane5); color: var(--lane5-fg); } .l6 { background: var(--lane6); color: var(--lane6-fg); }
+.bar { display: inline-block; height: 8px; background: var(--accent); border-radius: 2px; vertical-align: middle; margin-right: 8px; }
+.tag { display: inline-block; font-size: 11px; letter-spacing: .06em; padding: 0 6px; border-radius: 3px; border: 1px solid var(--warn); color: var(--warn); margin-left: 6px; vertical-align: 2px; }
+footer { margin-top: 56px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+<nav class="toc" aria-label="目次">
+  <p>目次</p>
+  <ol>
+    <li><a href="#overview">概要</a></li>
+    <li><a href="#usage">使い方</a></li>
+    <li><a href="#data">データ</a></li>
+    <li><a href="#features">特徴量</a></li>
+    <li><a href="#model">1着確率モデル</a></li>
+    <li><a href="#trifecta">3連単確率</a></li>
+    <li><a href="#eval">評価方法</a></li>
+    <li><a href="#limits">制約と注意</a></li>
+  </ol>
+</nav>
+
+<main>
+<header class="doc">
+  <p class="eyebrow">仕様書</p>
+  <h1>競艇統計予想アプリ</h1>
+  <p class="meta">branch: claude/cloud-session-credit-verify-mh18aa · Python 3.11 / SQLite / LightGBM / Streamlit</p>
+</header>
+
+<h2 id="overview"><span class="num">1</span>概要</h2>
+<p>ボートレース公式の過去データ（番組表・競走成績）を集計します。そのデータから、各艇の<strong>1着確率</strong>と<strong>3連単120通りの確率</strong>を推定するアプリです。</p>
+<p>データ元：<a href="https://www.boatrace.jp/owpc/pc/extra/data/download.html">ボートレース公式 ダウンロードページ</a></p>
+<ol class="flow">
+  <li><b>取得</b>LZH を日付ごとに取得<span>download.py</span></li>
+  <li><b>解析</b>固定長テキストを読む<span>parsers.py</span></li>
+  <li><b>保存</b>SQLite の3テーブル<span>db.py</span></li>
+  <li><b>特徴量</b>前日までの情報のみ<span>features.py</span></li>
+  <li><b>1着確率</b>分類モデル＋正規化<span>model.py</span></li>
+  <li><b>3連単</b>Plackett-Luce<span>model.py</span></li>
+  <li><b>表示</b>画面・CLI<span>app.py / cli.py</span></li>
+</ol>
+<div class="note"><strong>未検証の点：</strong>開発環境から公式サイトに接続できませんでした。そのため、パーサーは公開されているファイル形式の知識をもとに作っており、実ファイルではまだ動作を確かめていません。初回の取り込み後に件数を確認してください（1日あたり 出走数 ≈ レース数 × 6）。</div>
+
+<h2 id="usage"><span class="num">2</span>使い方</h2>
+<h3>セットアップ</h3>
+<pre><code>git clone -b claude/cloud-session-credit-verify-mh18aa \
+  https://github.com/hirossy0301/anthropic-claude-code.git
+cd anthropic-claude-code
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt</code></pre>
+
+<h3>コマンド一覧</h3>
+<p>いずれも <code>python -m boatrace.cli &lt;コマンド&gt;</code> の形で実行します。</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>コマンド</th><th>内容</th><th>例</th></tr></thead>
+  <tbody>
+    <tr><td><code>download</code></td><td>番組表(B)と競走成績(K)を期間指定で取得・解凍します。取得済みの日はスキップし、1.5秒間隔でアクセスします。</td><td><code>--start 2023-10-01 --end 2026-09-28</code></td></tr>
+    <tr><td><code>ingest</code></td><td><code>data/raw</code> のテキストを解析して SQLite に取り込みます。</td><td>引数なし</td></tr>
+    <tr><td><code>demo-data</code></td><td>動作確認用の合成データを生成します（実データではありません）。</td><td><code>--days 180</code></td></tr>
+    <tr><td><code>backtest</code></td><td>指定日より前で学習し、指定日以降で評価します。</td><td><code>--cutoff 2026-04-01 --top-n 5</code></td></tr>
+    <tr><td><code>train</code></td><td>全期間で学習し、<code>data/model.pkl</code> に保存します。</td><td>引数なし</td></tr>
+    <tr><td><code>predict</code></td><td>1レース分の予想を表示します。</td><td><code>--date 2026-09-29 --venue 12 --race 1</code></td></tr>
+  </tbody>
+</table></div>
+
+<h3>標準的な流れ</h3>
+<pre><code># 実データ（直近3年、約1時間）
+python -m boatrace.cli download --start 2023-10-01 --end 2026-09-28
+python -m boatrace.cli ingest
+python -m boatrace.cli backtest --cutoff 2026-04-01
+python -m boatrace.cli train
+streamlit run app.py
+
+# 当日の予想: 当日分の番組表を取り込んでから画面で選択
+python -m boatrace.cli download --start 2026-09-30 --end 2026-09-30
+python -m boatrace.cli ingest</code></pre>
+
+<h3>画面（Streamlit）</h3>
+<ul>
+  <li>日付・場・レースを選ぶと、各艇の1着確率（表と棒グラフ）と3連単の上位が表示されます。</li>
+  <li>結果が確定しているレースでは、実際の3連単・払戻金と「予想の何位だったか」も表示されます。</li>
+  <li>スマホで見る場合は <code>streamlit run app.py --server.address 0.0.0.0</code> で起動します。同じWi‑Fiにつないだスマホのブラウザで <code>http://&lt;PCのIPアドレス&gt;:8501</code> を開いてください。</li>
+</ul>
+<p>場コード（<code>--venue</code>）は公式の番号に従います。例：01 桐生、02 戸田、12 住之江、24 大村。</p>
+
+<h2 id="data"><span class="num">3</span>データ</h2>
+<p>公式ファイルは Shift_JIS の固定長テキストで、全角数字と全角空白が混ざっています。そこで行ごとに <strong>NFKC 正規化</strong>（全角英数字を半角に揃える処理）をかけます。そのうえで、桁位置ではなく正規表現で項目を読み取ります。全角と半角が混ざると桁位置がずれやすいためです。</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>テーブル</th><th>元ファイル</th><th>主な列</th><th>キー</th></tr></thead>
+  <tbody>
+    <tr><td><code>entries</code></td><td>番組表 (B)</td><td>枠、登録番号、選手名、年齢、支部、体重、級別、全国・当地の勝率と2連率、モーター番号と2連率、ボート番号と2連率</td><td>日付・場・R・枠</td></tr>
+    <tr><td><code>results</code></td><td>競走成績 (K)</td><td>着順（F・L・K・S などの失格・欠場は NULL）、展示タイム、進入コース、スタートタイミング、フライングの有無</td><td>日付・場・R・枠</td></tr>
+    <tr><td><code>races</code></td><td>競走成績 (K)</td><td>3連単の組番・払戻、単勝払戻、風向、風速、波高</td><td>日付・場・R</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="features"><span class="num">4</span>特徴量</h2>
+<p>1艇を1行として、18個の特徴量を作ります。</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>区分</th><th>特徴量</th><th>意味</th></tr></thead>
+  <tbody>
+    <tr><td>番組表</td><td><code>lane</code></td><td>枠番（1〜6）</td></tr>
+    <tr><td>番組表</td><td><code>class_rank</code></td><td>級別を数値化（A1=4, A2=3, B1=2, B2=1）</td></tr>
+    <tr><td>番組表</td><td><code>nat_win_rate</code> / <code>nat_2_rate</code></td><td>全国勝率 / 全国2連率</td></tr>
+    <tr><td>番組表</td><td><code>loc_win_rate</code> / <code>loc_2_rate</code></td><td>当地勝率 / 当地2連率</td></tr>
+    <tr><td>番組表</td><td><code>motor_2_rate</code> / <code>boat_2_rate</code></td><td>モーター2連率 / ボート2連率</td></tr>
+    <tr><td>番組表</td><td><code>weight</code> / <code>age</code></td><td>体重 / 年齢</td></tr>
+    <tr><td>レース内比較</td><td><code>nat_win_rate_diff</code></td><td>全国勝率とレース平均の差</td></tr>
+    <tr><td>レース内比較</td><td><code>nat_win_rate_rank</code> / <code>motor_2_rate_rank</code></td><td>レース内での全国勝率の順位 / モーター2連率の順位</td></tr>
+    <tr><td>レース内比較</td><td><code>class_rank_diff</code></td><td>級別とレース平均の差</td></tr>
+    <tr><td>履歴</td><td><code>racer_avg_st</code></td><td>選手の平均スタートタイミング</td></tr>
+    <tr><td>履歴</td><td><code>racer_lane_win</code></td><td>選手のその枠での1着率</td></tr>
+    <tr><td>履歴</td><td><code>racer_win</code></td><td>選手の1着率</td></tr>
+    <tr><td>履歴</td><td><code>venue_lane_win</code></td><td>場ごとの枠別1着率（例：住之江の1号艇）</td></tr>
+  </tbody>
+</table></div>
+
+<h3>リーク防止とベイズ平滑化</h3>
+<p>履歴系の特徴量は、<strong>予想する日の前日までのデータだけ</strong>で計算します。当日以降の結果を混ぜると未来の情報が入り込み、バックテストの成績が実力以上に良く見えてしまうためです。同じ日の先に終わったレースの結果も使いません。朝の時点で1日分を予想する使い方を前提にしているためです。</p>
+<p>出走数が少ない選手は率が極端な値になりやすいので、事前の値（prior）を k 件分足して平均をならします。</p>
+<div class="formula">平滑化した率 = (前日までの合計 + prior × k) ÷ (前日までの件数 + k)</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>特徴量</th><th class="n">prior</th><th class="n">k</th><th>考え方</th></tr></thead>
+  <tbody>
+    <tr><td><code>racer_avg_st</code></td><td class="n">0.16</td><td class="n">5</td><td>平均的なスタートタイミング</td></tr>
+    <tr><td><code>racer_lane_win</code></td><td class="n">1/6</td><td class="n">5</td><td>6艇立ての均等確率</td></tr>
+    <tr><td><code>racer_win</code></td><td class="n">1/6</td><td class="n">10</td><td>同上</td></tr>
+    <tr><td><code>venue_lane_win</code></td><td class="n">1/6</td><td class="n">50</td><td>場×枠は件数が多いので強めにならす</td></tr>
+  </tbody>
+</table></div>
+
+<h2 id="model"><span class="num">5</span>1着確率モデル</h2>
+<p>各艇について「1着になるか」を二値分類で学習します。その出力 s<sub>i</sub> を、レース内で合計が1になるよう正規化します。</p>
+<div class="formula">p<sub>i</sub> = s<sub>i</sub> ÷ (s<sub>1</sub> + s<sub>2</sub> + … + s<sub>6</sub>)</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>モデル</th><th>役割</th><th>設定</th></tr></thead>
+  <tbody>
+    <tr><td>LightGBM</td><td>本番用</td><td>木 400本、学習率 0.03、葉数 31、葉の最小件数 50、行・列のサンプリング 0.8</td></tr>
+    <tr><td>ロジスティック回帰</td><td>比較用</td><td>標準化したうえで学習。欠損は学習データの中央値で補完</td></tr>
+    <tr><td>場×枠の1着率</td><td>ベースライン</td><td>学習期間の「場ごとの枠別1着率」をそのまま確率にする</td></tr>
+  </tbody>
+</table></div>
+<p>学習に使うのは、<strong>結果が確定していて、6艇がそろい、1着が1艇だけのレース</strong>です。欠場や全艇フライングなどのレースは除きます。</p>
+
+<h2 id="trifecta"><span class="num">6</span>3連単確率</h2>
+<p>1着確率から、3連単120通りの確率を <strong>Plackett-Luce（Harville）モデル</strong>で計算します。これは「1着を決めたら残りの艇の中から次の着を決める」という順番で確率を掛け合わせる方法です。</p>
+<div class="formula">P(a-b-c) = p<sub>a</sub> × p<sub>b</sub> ÷ (1 − p<sub>a</sub>) × p<sub>c</sub> ÷ (1 − p<sub>a</sub> − p<sub>b</sub>)</div>
+<h3>計算例</h3>
+<div class="lanes" aria-label="艇番カラー">
+  <span class="lane l1">1</span><span class="lane l2">2</span><span class="lane l3">3</span><span class="lane l4">4</span><span class="lane l5">5</span><span class="lane l6">6</span>
+</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>枠</th><th class="n">1着確率</th><th></th></tr></thead>
+  <tbody>
+    <tr><td><span class="lane l1">1</span></td><td class="n">0.50</td><td><span class="bar" style="width:150px"></span></td></tr>
+    <tr><td><span class="lane l2">2</span></td><td class="n">0.20</td><td><span class="bar" style="width:60px"></span></td></tr>
+    <tr><td><span class="lane l3">3</span></td><td class="n">0.10</td><td><span class="bar" style="width:30px"></span></td></tr>
+    <tr><td><span class="lane l4">4</span></td><td class="n">0.10</td><td><span class="bar" style="width:30px"></span></td></tr>
+    <tr><td><span class="lane l5">5</span></td><td class="n">0.05</td><td><span class="bar" style="width:15px"></span></td></tr>
+    <tr><td><span class="lane l6">6</span></td><td class="n">0.05</td><td><span class="bar" style="width:15px"></span></td></tr>
+  </tbody>
+</table></div>
+<div class="formula">P(1-2-3) = 0.50 × 0.20 ÷ 0.50 × 0.10 ÷ 0.30 = 0.50 × 0.40 × 0.333 ≈ 0.067（6.7%）</div>
+<p>120通りの確率を合計すると1になります（テストで確認済み）。</p>
+
+<h2 id="eval"><span class="num">7</span>評価方法</h2>
+<p><strong>時系列分割</strong>で評価します。<code>--cutoff</code> より前の期間で学習し、それ以降の期間で検証します。ランダムに分割すると、未来のレースで学習してしまうため使いません。</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>指標</th><th>定義</th><th>良い方向</th></tr></thead>
+  <tbody>
+    <tr><td>1着的中率</td><td>1着確率が最も高い艇が実際に1着だった割合</td><td>高い</td></tr>
+    <tr><td>対数損失</td><td>実際の1着艇に付けた確率 p の −log(p) の平均</td><td>低い</td></tr>
+    <tr><td>3連単 上位N点の的中率</td><td>確率の上位N点の中に、実際の3連単が入っていた割合</td><td>高い</td></tr>
+    <tr><td>回収率</td><td>払戻の合計 ÷（N点 × 100円 × レース数）</td><td>100% を超えれば収支がプラス</td></tr>
+  </tbody>
+</table></div>
+
+<h3>合成データでの結果 <span class="tag">実データではない</span></h3>
+<p>動作確認用の合成データ（180日・4場）で、2026-05-01 を境に分けた結果です。合成データの払戻は、真の確率の公正オッズに還元率75%を掛けて作っています。</p>
+<div class="table-wrap"><table>
+  <thead><tr><th>方法</th><th class="n">1着的中率</th><th class="n">対数損失</th><th class="n">3連単 上位5点</th><th class="n">回収率</th></tr></thead>
+  <tbody>
+    <tr><td>ベースライン（場×枠）</td><td class="n">47.5%</td><td class="n">1.514</td><td class="n">18.2%</td><td class="n">80%</td></tr>
+    <tr><td>ロジスティック回帰</td><td class="n">50.3%</td><td class="n">1.337</td><td class="n">34.8%</td><td class="n">77%</td></tr>
+    <tr><td>LightGBM</td><td class="n">50.0%</td><td class="n">1.349</td><td class="n">32.8%</td><td class="n">76%</td></tr>
+  </tbody>
+</table></div>
+<p>的中率はベースラインより上がりましたが、回収率は還元率（約75%）の近くに留まっています。確率の精度を上げても、それだけでは控除率（約25%）の分を取り返せないことを表しています。</p>
+
+<h2 id="limits"><span class="num">8</span>制約と注意</h2>
+<ul>
+  <li><strong>パーサーは実ファイルで未検証です。</strong>初回の取り込み後に件数と値を確認してください。</li>
+  <li><strong>オッズを使っていません。</strong>競走成績に入っているのは確定後の払戻だけなので、期待値がプラスの買い目を判定できません。回収率100%超えを狙うには、直前オッズの取得が必要です（利用規約の確認が前提です）。</li>
+  <li><strong>Harville モデルには偏りがあります。</strong>2着・3着の確率に偏りが出やすいことが知られています。改善するなら、2着・3着を別のモデルで補正する方法があります。</li>
+  <li><strong>直前情報を使っていません。</strong>展示タイム・進入コース・気象は結果ファイルにはありますが、予想時点では使っていません。当日の直前情報を取得すれば追加できます。</li>
+  <li><strong>当日の予想には、当日分の番組表の取り込みが必要です。</strong>毎日の自動化（定期実行）はまだ実装していません。</li>
+  <li><strong>3年分の取得</strong>には、1.5秒間隔で約2,200リクエスト、約1時間かかります。</li>
+</ul>
+
+<footer>確率は過去データからの統計的な推定です。的中や利益を保証するものではありません。</footer>
+</main>
+</div>
+</body>
+</html>

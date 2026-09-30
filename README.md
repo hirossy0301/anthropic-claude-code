@@ -4,6 +4,8 @@
 
 データ元: https://www.boatrace.jp/owpc/pc/extra/data/download.html
 
+詳しい使い方と予測の手法は [docs/spec.html](docs/spec.html) にまとめています。
+
 ## 構成
 
 | ファイル | 役割 |
