@@ -36,8 +36,19 @@ python -m boatrace.cli train
 python -m boatrace.cli predict --date 2026-09-29 --venue 12 --race 1   # 朝の予想
 python -m boatrace.cli predict --date 2026-09-29 --venue 12 --race 1 \
   --mode prerace --wind-dir 北西 --wind-speed 3 --wave 2 --courses 1,2,4,3,5,6   # 直前の予想
-streamlit run app.py
+python -m streamlit run app.py
 ```
+
+### Windows（PowerShell）
+
+```powershell
+python -m venv .venv
+.venv\Scripts\Activate.ps1          # 実行できない場合: Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+python -m pip install -r requirements.txt
+python -m streamlit run app.py      # "streamlit run" だと別の Python で起動され ModuleNotFoundError になることがある
+```
+
+- Python は 3.11〜3.13 を使ってください（`lhafile` の Windows 用ビルドがこの範囲のみ）。
 
 ネットに接続できない環境では、`download` の代わりに `python -m boatrace.cli demo-data --days 180` を実行してください。合成データで一通り試せます。
 
