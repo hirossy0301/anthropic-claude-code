@@ -169,3 +169,12 @@ def test_both_models_predict(tmp_path):
     for mode, features in FEATURE_SETS.items():
         p = WinModel(features=list(features)).fit(rows).predict_win_prob(rows)
         assert p.notna().all()
+
+
+def test_program_boat_number_three_digits_without_space():
+    # 実ファイル (2026-09-28 芦屋) の行。3桁のボート番号が直前のモーター2率と連結している
+    text = ("21BBGN\n　１Ｒ  サンライズＶ          Ｈ１８００ｍ  電話投票締切予定０８：４４\n"
+            "1 3232山川美由59香川47A2 5.66 33.73 6.66 53.13  8 44.68114 42.16 1233313     10\n21BEND\n")
+    (r,) = parse_program(text, D)
+    assert (r["motor_no"], r["motor_2_rate"], r["boat_no"], r["boat_2_rate"]) == (8, 44.68, 114, 42.16)
+    assert r["deadline"] == "08:44" and r["race_name"] == "サンライズV"

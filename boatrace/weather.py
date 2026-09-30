@@ -30,15 +30,27 @@ def parse_hourly(venue: int, payload: dict) -> list[dict]:
     return rows
 
 
-def _fetch(url: str, venue: int, start: date, end: date, session: requests.Session) -> list[dict]:
+def _fetch(url: str, venue: int, start: date, end: date, session: requests.Session,
+           retries: int = 4) -> list[dict]:
+    """通信の一時的な失敗 (タイムアウト・5xx) は 2, 4, 8 秒待って再試行する。"""
     info = VENUE_INFO[venue]
-    resp = session.get(url, timeout=30, params={
+    params = {
         "latitude": info["lat"], "longitude": info["lon"],
         "start_date": start.isoformat(), "end_date": end.isoformat(),
         "hourly": "temperature_2m", "timezone": "Asia/Tokyo",
-    })
-    resp.raise_for_status()
-    return parse_hourly(venue, resp.json())
+    }
+    for attempt in range(retries):
+        try:
+            resp = session.get(url, timeout=30, params=params)
+            if resp.status_code < 500:
+                resp.raise_for_status()
+                return parse_hourly(venue, resp.json())
+            err: Exception = requests.HTTPError(f"HTTP {resp.status_code}")
+        except (requests.ConnectionError, requests.Timeout) as e:
+            err = e
+        if attempt < retries - 1:
+            time.sleep(2 ** (attempt + 1))
+    raise err
 
 
 def fetch_temperatures(conn: sqlite3.Connection, start: date, end: date,
