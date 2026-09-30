@@ -48,7 +48,21 @@ python -m pip install -r requirements.txt
 python -m streamlit run app.py      # "streamlit run" だと別の Python で起動され ModuleNotFoundError になることがある
 ```
 
+### Windows（コマンドプロンプト）
+
+仮想環境を有効化せず、仮想環境の Python を直接指定するのが確実です。
+
+```bat
+python -m venv .venv
+.venv\Scripts\python -m pip install -r requirements.txt
+.venv\Scripts\python -m boatrace.cli demo-data --days 180
+.venv\Scripts\python -m boatrace.cli ingest
+.venv\Scripts\python -m boatrace.cli train
+.venv\Scripts\python -m streamlit run app.py
+```
+
 - Python は 3.11〜3.13 を使ってください（`lhafile` の Windows 用ビルドがこの範囲のみ）。
+- `ModuleNotFoundError` が出る場合は、グローバル環境の Python で起動しています。上の `.venv\Scripts\python` から始まるコマンドで起動してください。
 
 ネットに接続できない環境では、`download` の代わりに `python -m boatrace.cli demo-data --days 180` を実行してください。合成データで一通り試せます。
 
