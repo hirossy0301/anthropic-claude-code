@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS entries (
     lane INTEGER, racer_id INTEGER, racer_name TEXT, age INTEGER, branch TEXT,
     weight INTEGER, racer_class TEXT, nat_win_rate REAL, nat_2_rate REAL,
     loc_win_rate REAL, loc_2_rate REAL, motor_no INTEGER, motor_2_rate REAL,
-    boat_no INTEGER, boat_2_rate REAL,
+    boat_no INTEGER, boat_2_rate REAL, deadline TEXT,
     PRIMARY KEY (race_date, venue, race_no, lane)
 );
 CREATE TABLE IF NOT EXISTS results (
@@ -31,13 +31,24 @@ CREATE TABLE IF NOT EXISTS races (
     wind_dir TEXT, wind_speed INTEGER, wave INTEGER,
     PRIMARY KEY (race_date, venue, race_no)
 );
+CREATE TABLE IF NOT EXISTS weather (
+    venue INTEGER, race_date TEXT, hour INTEGER, temperature REAL,
+    PRIMARY KEY (venue, race_date, hour)
+);
 """
+
+# 既存 DB に後から追加した列 (table, column, type)
+MIGRATIONS = [("entries", "deadline", "TEXT")]
 
 
 def connect(path: Path = config.DB_PATH) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
     conn.executescript(SCHEMA)
+    for table, col, typ in MIGRATIONS:
+        cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if col not in cols:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
     return conn
 
 
@@ -68,13 +79,20 @@ def ingest_dir(conn: sqlite3.Connection, raw_dir: Path = config.RAW_DIR, log=pri
 
 
 def load_frame(conn: sqlite3.Connection) -> pd.DataFrame:
-    """出走表 + 結果を1艇1行で結合した DataFrame。未確定レースは finish が NaN。"""
+    """出走表 + 結果 + 風・波 + 気温を1艇1行で結合した DataFrame。
+
+    未確定レースは finish が NaN。気温は締切予定時刻の「時」の値 (締切不明なら12時)。
+    """
     return pd.read_sql_query(
         """
         SELECT e.*, r.finish, r.finish_code, r.exhibition_time, r.course,
-               r.start_timing, r.flying
+               r.start_timing, r.flying,
+               ra.wind_dir, ra.wind_speed, ra.wave, w.temperature
         FROM entries e
         LEFT JOIN results r USING (race_date, venue, race_no, lane)
+        LEFT JOIN races ra USING (race_date, venue, race_no)
+        LEFT JOIN weather w ON w.venue = e.venue AND w.race_date = e.race_date
+             AND w.hour = COALESCE(CAST(substr(e.deadline, 1, instr(e.deadline, ':') - 1) AS INTEGER), 12)
         ORDER BY e.race_date, e.venue, e.race_no, e.lane
         """,
         conn,

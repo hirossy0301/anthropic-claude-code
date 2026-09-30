@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from .features import RACE_KEYS, training_rows
+from .features import FEATURE_SETS, FEATURES_V1, RACE_KEYS, training_rows
 from .model import WinModel, multiclass_log_loss, trifecta_probs
 
 
@@ -47,8 +47,15 @@ def run_backtest(feat: pd.DataFrame, races: pd.DataFrame, cutoff: str, top_n: in
     test["p_base"] /= test.groupby(RACE_KEYS)["p_base"].transform("sum")
 
     results = {"baseline(場×枠)": evaluate(test, races, "p_base", top_n)}
-    for kind in ("logreg", "lgbm"):
-        model = WinModel(kind=kind).fit(train)
-        test[f"p_{kind}"] = model.predict_win_prob(test)
-        results[kind] = evaluate(test, races, f"p_{kind}", top_n)
+    # 要因を追加する前 (v1) と後 (朝 / 直前) を同じ期間で比べる
+    specs = {
+        "logreg 朝": ("logreg", FEATURE_SETS["morning"]),
+        "lgbm 初版(v1)": ("lgbm", FEATURES_V1),
+        "lgbm 朝": ("lgbm", FEATURE_SETS["morning"]),
+        "lgbm 直前": ("lgbm", FEATURE_SETS["prerace"]),
+    }
+    for name, (kind, features) in specs.items():
+        model = WinModel(kind=kind, features=list(features)).fit(train)
+        test[f"p_{name}"] = model.predict_win_prob(test)
+        results[name] = evaluate(test, races, f"p_{name}", top_n)
     return pd.DataFrame(results).T

@@ -26,6 +26,7 @@ RESULT_ENTRY = re.compile(
 TRIFECTA = re.compile(r"^\s*3連単\s+(\d-\d-\d)\s+(\d+)")
 WIN = re.compile(r"^\s*単勝\s+(\d)\s+(\d+)")
 WIND = re.compile(r"風\s*(\S+?)\s+(\d+)m")
+DEADLINE = re.compile(r"締切予定\s*(\d{1,2}:\d{2})")
 WAVE = re.compile(r"波\s*(\d+)cm")
 
 
@@ -62,7 +63,9 @@ def parse_program(text: str, race_date: date) -> list[dict]:
             continue
         if m := RACE_HEADER.match(line):
             race = {"race_no": int(m.group(1)), "race_name": m.group(2).strip(),
-                    "distance": int(m.group(3))}
+                    "distance": int(m.group(3)), "deadline": None}
+            if d := DEADLINE.search(line):
+                race["deadline"] = d.group(1)  # 電話投票締切予定 (HH:MM)
             continue
         if race and (m := PROGRAM_ENTRY.match(line)):
             g = m.groups()

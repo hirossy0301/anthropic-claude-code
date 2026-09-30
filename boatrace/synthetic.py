@@ -2,7 +2,8 @@
 
 公式ファイルと同じ体裁 (全角数字・全角空白を含む) の b*.txt / k*.txt を書き出すので、
 ダウンロードできない環境でもパーサー〜学習〜画面まで一通り動かせる。
-着順は「枠の有利さ + 級別 + 勝率 + モーター + 乱数」の強さから決める。
+着順は「進入コースの有利さ + 級別 + 勝率 + モーター + 乱数」の強さから決める。
+風が強いほど1コースの有利さが減り、淡水の場では体重が重いほど不利になるようにしている。
 """
 from __future__ import annotations
 
@@ -10,6 +11,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 import numpy as np
+
+from .venues import VENUE_INFO, WIND_DEG
 
 FW = str.maketrans("0123456789R", "０１２３４５６７８９Ｒ")
 CLASSES = ["A1", "A2", "B1", "B2"]
@@ -41,9 +44,17 @@ def generate(out_dir: Path, start: date, days: int, venues=(1, 2, 12, 24), seed:
         for v in venues:
             b += [f"{v:02d}BBGN", "", "                     ***  番組表  ***", ""]
             k += [f"{v:02d}KBGN", "", "                     ***  競走成績  ***", ""]
+            fresh = VENUE_INFO[v]["water"] == "fresh"
             for r in range(1, 13):
                 picks = rng.choice(len(racers), 6, replace=False)
-                header = f"　{str(r).translate(FW)}Ｒ  予選　　　　　　　 Ｈ１８００ｍ  電話投票締切予定１０：３５"
+                wind_dir = str(rng.choice(list(WIND_DEG)))
+                wind_speed = int(rng.integers(0, 9))
+                courses = [1, 2, 3, 4, 5, 6]
+                if rng.random() < 0.1:  # 前付け: 4号艇が3コースに入る
+                    courses = [1, 2, 4, 3, 5, 6]
+                hh, mm = divmod(10 * 60 + 35 + 30 * (r - 1), 60)
+                header = (f"　{str(r).translate(FW)}Ｒ  予選　　　　　　　 Ｈ１８００ｍ  "
+                          f"電話投票締切予定{f'{hh}：{mm:02d}'.translate(FW)}")
                 b += [header, "-" * 79]
                 entries = []
                 for lane, idx in enumerate(picks, start=1):
@@ -52,8 +63,12 @@ def generate(out_dir: Path, start: date, days: int, venues=(1, 2, 12, 24), seed:
                     m2 = float(np.clip(33 + 10 * motors[v][mno] + rng.normal(0, 3), 10, 70))
                     b2 = float(np.clip(33 + rng.normal(0, 5), 10, 70))
                     st = float(np.clip(0.17 - 0.03 * rc["skill"] + rng.normal(0, 0.04), 0.01, 0.4))
-                    strength = LANE_ADV[lane - 1] + rc["skill"] + motors[v][mno] + 4 * (0.16 - st)
-                    entries.append((lane, rc, mno, st, strength))
+                    course = courses[lane - 1]
+                    adv = LANE_ADV[course - 1] - (0.15 * wind_speed if course == 1 else 0)
+                    strength = adv + rc["skill"] + motors[v][mno] + 4 * (0.16 - st)
+                    if fresh:
+                        strength -= 0.08 * (rc["weight"] - 51)
+                    entries.append((lane, rc, mno, st, strength, course))
                     b.append(f"{lane} {rc['id']}{rc['name']}{rc['age']:02d}{rc['branch']}"
                              f"{rc['weight']:02d}{rc['cls']} {rc['win_rate']:4.2f} {rc['win_rate'] * 7:5.2f}"
                              f" {rc['win_rate']:4.2f} {rc['win_rate'] * 7:5.2f} {mno:3d} {m2:5.2f}"
@@ -62,13 +77,13 @@ def generate(out_dir: Path, start: date, days: int, venues=(1, 2, 12, 24), seed:
                 # Plackett-Luce に従う着順: 強さ + ガンベル乱数 の降順
                 noise = rng.gumbel(size=6)
                 order = np.argsort(-(np.array([e[4] for e in entries]) + noise))
-                k += [f"   {r}R       予選                 H1800m  晴　  風  北西　 3m  波　  2cm",
+                k += [f"   {r}R       予選                 H1800m  晴　  風  {wind_dir}　 {wind_speed}m  波　  {wind_speed}cm",
                       "  着 艇 登番 　選　手　名　　ﾓｰﾀｰ ﾎﾞｰﾄ 展示 進入 ｽﾀｰﾄﾀｲﾐﾝｸ ﾚｰｽﾀｲﾑ", "-" * 79]
                 for pos, i in enumerate(order, start=1):
-                    lane, rc, mno, st, _ = entries[i]
+                    lane, rc, mno, st, _, course = entries[i]
                     name = "　".join(rc["name"])
                     k.append(f"  {pos:02d}  {lane} {rc['id']} {name} {mno:3d}  {int(rng.integers(1, 80)):3d}"
-                             f"  6.{int(rng.integers(60, 90))}   {lane}    {st:4.2f}     1.{49 + pos}.{pos}")
+                             f"  6.{int(rng.integers(60, 90))}   {course}    {st:4.2f}     1.{49 + pos}.{pos}")
                 tri = "-".join(str(entries[i][0]) for i in order[:3])
                 # 払戻 = 真の確率に対する公正オッズ × 還元率75% (控除率25%)
                 p = np.exp([e[4] for e in entries])

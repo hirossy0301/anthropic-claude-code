@@ -25,7 +25,7 @@ class WinModel:
 
     def fit(self, df: pd.DataFrame) -> "WinModel":
         X, y = df[self.features], df["win"].astype(int)
-        self.medians = X.median()
+        self.medians = X.median().fillna(0)  # 全欠損の列 (気温未取得など) は 0
         if self.kind == "lgbm":
             import lightgbm as lgb
             self.estimator = lgb.LGBMClassifier(

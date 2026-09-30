@@ -6,7 +6,13 @@ DATA_DIR = ROOT / "data"
 RAW_DIR = DATA_DIR / "raw"  # 解凍済みテキスト (b/k YYMMDD.txt)
 LZH_DIR = DATA_DIR / "lzh"  # ダウンロードした圧縮ファイル
 DB_PATH = DATA_DIR / "boatrace.db"
-MODEL_PATH = DATA_DIR / "model.pkl"
+MODEL_DIR = DATA_DIR
+
+
+def model_path(mode: str) -> Path:
+    """mode: "morning" (朝の予想) / "prerace" (直前の予想)"""
+    return MODEL_DIR / f"model_{mode}.pkl"
+
 
 # 公式ダウンロードページ (https://www.boatrace.jp/owpc/pc/extra/data/download.html)
 # から配布されているファイルの実体。B=番組表, K=競走成績。
