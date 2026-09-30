@@ -1,8 +1,10 @@
 """パスと定数。"""
+import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = ROOT / "data"
+# 環境変数 BOATRACE_DATA_DIR で保存先を切り替えられる (例: 実データと合成データを分ける)
+DATA_DIR = Path(os.environ.get("BOATRACE_DATA_DIR", ROOT / "data"))
 RAW_DIR = DATA_DIR / "raw"  # 解凍済みテキスト (b/k YYMMDD.txt)
 LZH_DIR = DATA_DIR / "lzh"  # ダウンロードした圧縮ファイル
 DB_PATH = DATA_DIR / "boatrace.db"

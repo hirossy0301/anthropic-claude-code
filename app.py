@@ -80,18 +80,21 @@ with left:
         "lane": "枠", "course": "進入", "racer_name": "選手", "racer_class": "級", "nat_win_rate": "全国勝率",
         "loc_win_rate": "当地勝率", "motor_2_rate": "モーター2率", "racer_avg_st": "平均ST",
         "venue_course_win_actual": "場のコース1着率", "win_prob": "1着確率", "finish": "結果"})
-    st.dataframe(view.style.format({"1着確率": "{:.1%}", "平均ST": "{:.3f}", "場のコース1着率": "{:.1%}"}),
-                 hide_index=True)
+    st.dataframe(view.style.format({
+        "進入": "{:.0f}", "全国勝率": "{:.2f}", "当地勝率": "{:.2f}", "モーター2率": "{:.1f}",
+        "平均ST": "{:.3f}", "場のコース1着率": "{:.1%}", "1着確率": "{:.1%}", "結果": "{:.0f}"}, na_rep="-"),
+        hide_index=True)
     st.bar_chart(g.set_index("lane")["win_prob"])
 with right:
     st.subheader("3連単 上位")
     top = st.slider("表示点数", 5, 30, 10)
-    st.dataframe(tri.head(top).style.format({"prob": "{:.2%}"}), hide_index=True)
+    st.dataframe(tri.head(top).rename(columns={"combo": "組番", "prob": "確率"})
+                 .style.format({"確率": "{:.2%}"}), hide_index=True)
     r = races[(races["race_date"] == race_date) & (races["venue"] == venue) & (races["race_no"] == race_no)]
     if not r.empty and r.iloc[0]["trifecta"]:
         res = r.iloc[0]
         rank = tri.index[tri["combo"] == res["trifecta"]]
-        st.info(f"結果: {res['trifecta']} (払戻 {res['trifecta_payout']:,}円)"
+        st.info(f"結果: {res['trifecta']} (払戻 {int(res['trifecta_payout']):,}円)"
                 + (f" / 予想順位 {rank[0] + 1}位" if len(rank) else ""))
 
 st.caption("確率は過去データからの統計的推定であり、的中や利益を保証するものではありません。")
