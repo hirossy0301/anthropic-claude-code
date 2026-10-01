@@ -13,6 +13,12 @@ MODEL_DIR = DATA_DIR
 SERVE_DIR = Path(os.environ.get("BOATRACE_SERVE_DIR", ROOT / "serve"))
 
 
+# モデルの作り方を変えたら上げる。serve/model_version.txt と違えば daily-update が再学習する
+MODEL_VERSION = 1
+# 枠ごとの確率の較正を本番の学習で使うか。3年分のバックテストで改善を確認してから True にする
+CALIBRATE = False
+
+
 def model_path(mode: str) -> Path:
     """mode: "morning" (朝の予想) / "prerace" (直前の予想)"""
     return MODEL_DIR / f"model_{mode}.pkl"

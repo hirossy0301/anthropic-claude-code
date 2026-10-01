@@ -64,8 +64,11 @@ jobs:
           # 月曜 06:30 JST の回 (UTC では日曜 21:30) に週1回再学習する
           WEEKLY=false
           if [ "$EVENT_SCHEDULE" = "30 21 * * *" ] && [ "$(date -u +%u)" = "7" ]; then WEEKLY=true; fi
+          # モデルの作り方が変わった (serve/model_version.txt がコードの MODEL_VERSION と違う) ときも再学習する
+          CODE_VERSION=$(python -c "from boatrace import config; print(config.MODEL_VERSION)")
+          SERVED_VERSION=$(cat serve/model_version.txt 2>/dev/null || echo none)
           if [ "$SEEDED" = "true" ] || [ "$REQUESTED" = "true" ] || [ "$WEEKLY" = "true" ] \
-             || [ ! -f serve/model_morning.pkl ]; then
+             || [ ! -f serve/model_morning.pkl ] || [ "$CODE_VERSION" != "$SERVED_VERSION" ]; then
             python -m boatrace.cli train --out-dir serve
           else
             echo "skip retrain"

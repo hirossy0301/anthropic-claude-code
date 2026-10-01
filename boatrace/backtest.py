@@ -82,11 +82,14 @@ def quarterly(rec: pd.DataFrame) -> pd.DataFrame:
     })
 
 
+# 名前: (手法, 特徴量, 較正するか)
 SPECS = {
-    "logreg 朝": ("logreg", FEATURE_SETS["morning"]),
-    "lgbm 初版(v1)": ("lgbm", FEATURES_V1),
-    "lgbm 朝": ("lgbm", FEATURE_SETS["morning"]),
-    "lgbm 直前": ("lgbm", FEATURE_SETS["prerace"]),
+    "logreg 朝": ("logreg", FEATURE_SETS["morning"], False),
+    "lgbm 初版(v1)": ("lgbm", FEATURES_V1, False),
+    "lgbm 朝": ("lgbm", FEATURE_SETS["morning"], False),
+    "lgbm 直前": ("lgbm", FEATURE_SETS["prerace"], False),
+    "lgbm 朝 較正": ("lgbm", FEATURE_SETS["morning"], True),
+    "lgbm 直前 較正": ("lgbm", FEATURE_SETS["prerace"], True),
 }
 
 
@@ -106,8 +109,8 @@ def run_backtest(feat: pd.DataFrame, races: pd.DataFrame, cutoff: str, top_n: in
     records = {"baseline(場×枠)": race_records(test, races, "p_base", top_n)}
     models = {}
     # 要因を追加する前 (v1) と後 (朝 / 直前) を同じ期間で比べる
-    for name, (kind, features) in SPECS.items():
-        models[name] = WinModel(kind=kind, features=list(features)).fit(train)
+    for name, (kind, features, calibrate) in SPECS.items():
+        models[name] = WinModel(kind=kind, features=list(features), calibrate=calibrate).fit(train)
         test[f"p_{name}"] = models[name].predict_win_prob(test)
         records[name] = race_records(test, races, f"p_{name}", top_n)
     table = pd.DataFrame({k: summarize(v, top_n) for k, v in records.items()}).T
@@ -149,18 +152,26 @@ def report(feat: pd.DataFrame, races: pd.DataFrame, cutoff: str, top_n: int = 5)
         "",
     ]
     rows = []
-    for a, b in [("lgbm 初版(v1)", "lgbm 朝"), ("lgbm 朝", "lgbm 直前"), ("logreg 朝", "lgbm 朝")]:
+    for a, b in [("lgbm 初版(v1)", "lgbm 朝"), ("lgbm 朝", "lgbm 直前"), ("logreg 朝", "lgbm 朝"),
+                 ("lgbm 朝", "lgbm 朝 較正"), ("lgbm 直前", "lgbm 直前 較正")]:
         d = paired_difference(records[a], records[b])
         rows.append({"比較": f"{b} − {a}",
                      "1着的中率の差": "{:+.2%} [{:+.2%}, {:+.2%}]".format(*d["win_accuracy"]),
                      "対数損失の差": "{:+.4f} [{:+.4f}, {:+.4f}]".format(*d["log_loss"])})
     out += [_md(pd.DataFrame(rows).set_index("比較")), ""]
 
-    out += ["## 較正（lgbm 朝）", "予測確率の帯ごとの、予測の平均と実際の1着率。", "",
-            _md(calibration(test, "p_lgbm 朝").rename_axis("予測確率"),
-                {"艇数": "{:,.0f}", "予測": "{:.1%}", "実際": "{:.1%}"}), ""]
-    out += ["## 四半期ごと（lgbm 朝）", "",
-            _md(quarterly(records["lgbm 朝"]),
+    before = calibration(test, "p_lgbm 朝")
+    after = calibration(test, "p_lgbm 朝 較正")
+    cal = pd.DataFrame({"補正前 艇数": before["艇数"], "補正前 予測": before["予測"], "補正前 実際": before["実際"],
+                        "補正後 艇数": after["艇数"], "補正後 予測": after["予測"], "補正後 実際": after["実際"]})
+    alphas = "; ".join(f"{n}: " + ", ".join(f"{x:.2f}" for x in np.atleast_1d(models[n].calib_alpha))
+                       for n in ("lgbm 朝 較正", "lgbm 直前 較正"))
+    out += ["## 較正（lgbm 朝、補正前と後）",
+            f"予測確率の帯ごとの、予測の平均と実際の1着率。補正の係数 alpha（枠1〜6）= {alphas}（1より大きいとその枠の強弱の差を広げる）。", "",
+            _md(cal.rename_axis("予測確率"),
+                {c: ("{:,.0f}" if "艇数" in c else "{:.1%}") for c in cal.columns}), ""]
+    out += ["## 四半期ごと（lgbm 朝 較正）", "",
+            _md(quarterly(records["lgbm 朝 較正"]),
                 {"レース数": "{:,.0f}", "1着的中率": "{:.1%}", "3連単的中率": "{:.1%}", "回収率": "{:.1%}"}), ""]
 
     for name in ("lgbm 朝", "lgbm 直前"):

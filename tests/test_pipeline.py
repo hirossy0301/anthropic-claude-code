@@ -241,3 +241,33 @@ def test_backtest_report_sections(tmp_path):
     rec = race_records(test, races, "p", 5)
     d = paired_difference(rec, rec)
     assert d["win_accuracy"][0] == 0 and d["log_loss"][0] == pytest.approx(0)
+
+
+def test_fit_alpha_recovers_known_distortion():
+    import numpy as np
+    from boatrace.model import fit_alpha
+    rng = np.random.default_rng(1)
+    n = 4000
+    true = rng.dirichlet(np.ones(6) * 0.8, size=n)  # レースごとの真の1着確率
+    winners = np.array([rng.choice(6, p=p) for p in true])
+    flat = true ** 0.5  # 真の確率を「なまらせた」予測 (alpha=2 で元に戻る)
+    df = pd.DataFrame({
+        "race_date": "2026-01-01", "venue": 1, "race_no": np.repeat(np.arange(n), 6),
+        "lane": np.tile(np.arange(1, 7), n),
+        "win": (np.tile(np.arange(6), n) == np.repeat(winners, 6)).astype(float),
+    })
+    assert fit_alpha(flat.ravel(), df) == pytest.approx([2.0] * 6, abs=0.25)
+
+
+def test_calibrated_model_and_old_pickles(tmp_path):
+    _, feat = _feat(tmp_path, 30)
+    rows = training_rows(feat)
+    m = WinModel(features=list(FEATURE_SETS["morning"]), calibrate=True).fit(rows)
+    assert len(m.calib_alpha) == 6 and all(0.3 <= a <= 4.0 for a in m.calib_alpha)
+    p = m.predict_win_prob(rows)
+    assert p.groupby([rows["race_date"], rows["venue"], rows["race_no"]]).sum().round(6).eq(1).all()
+    # 較正の導入前に保存されたモデル (calib_alpha 属性なし) も読めて、補正なしで予測できる
+    old = WinModel(features=list(FEATURE_SETS["morning"])).fit(rows)
+    del old.__dict__["calib_alpha"]
+    old.save(tmp_path / "old.pkl")
+    assert WinModel.load(tmp_path / "old.pkl").predict_win_prob(rows).notna().all()
