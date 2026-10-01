@@ -1,8 +1,13 @@
 # 3年分のデータ (daily-update が Actions のキャッシュに保存したもの) でバックテストする。
 # 結果は実行ページの Summary と、成果物 backtest-report に Markdown で出る。
+# 起動方法は2つ: Actions 画面の Run workflow、または backtest-request.txt を変更して push
+# (Claude の GitHub 連携にはワークフローを起動する権限がないため、push で起動できるようにしている)。
 name: backtest
 
 on:
+  push:
+    paths:
+      - backtest-request.txt
   workflow_dispatch:
     inputs:
       cutoff:
@@ -37,10 +42,29 @@ jobs:
           restore-keys: boatrace-data-
           fail-on-cache-miss: true
 
+      - name: Resolve parameters
+        id: params
+        env:
+          IN_CUTOFF: ${{ inputs.cutoff }}
+          IN_TOP_N: ${{ inputs.top_n }}
+        run: |
+          CUTOFF="$IN_CUTOFF"; TOP_N="$IN_TOP_N"
+          if [ -f backtest-request.txt ] && [ -z "$CUTOFF" ]; then
+            CUTOFF=$(sed -n 's/^cutoff=//p' backtest-request.txt | tr -d '[:space:]')
+            TOP_N=$(sed -n 's/^top_n=//p' backtest-request.txt | tr -d '[:space:]')
+          fi
+          CUTOFF=${CUTOFF:-2025-10-01}; TOP_N=${TOP_N:-5}
+          # 値はコマンドに渡すので形式を確かめる
+          [[ "$CUTOFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "cutoff の形式が不正: $CUTOFF"; exit 1; }
+          [[ "$TOP_N" =~ ^[0-9]{1,3}$ ]] || { echo "top_n の形式が不正: $TOP_N"; exit 1; }
+          echo "cutoff=$CUTOFF" >> "$GITHUB_OUTPUT"
+          echo "top_n=$TOP_N" >> "$GITHUB_OUTPUT"
+          echo "cutoff=$CUTOFF top_n=$TOP_N"
+
       - name: Backtest
         env:
-          CUTOFF: ${{ inputs.cutoff }}
-          TOP_N: ${{ inputs.top_n }}
+          CUTOFF: ${{ steps.params.outputs.cutoff }}
+          TOP_N: ${{ steps.params.outputs.top_n }}
         run: |
           python -m boatrace.cli backtest --cutoff "$CUTOFF" --top-n "$TOP_N" --report report.md
           cat report.md >> "$GITHUB_STEP_SUMMARY"

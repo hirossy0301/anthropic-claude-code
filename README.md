@@ -84,6 +84,13 @@ GitHub Actions（`.github/workflows/daily-update`）が毎朝 06:30 / 09:30（�
 3. `serve/` がコミットされたら、https://share.streamlit.io に GitHub アカウントでログインし、**Create app** でこのリポジトリ・ブランチ・`app.py` を指定する。**Advanced settings** で Python は 3.12 を選ぶ
 4. 閲覧者を限定する場合は、アプリの **Settings → Sharing** で閲覧できる人のメールアドレスを登録する
 
+### 3年分のバックテスト
+
+Actions のキャッシュにある3年分のデータで実行します。結果は実行ページの **Summary** に出ます（全体の指標、要因を追加した効果の95%信頼区間、較正、四半期ごとの回収率、特徴量の寄与）。
+
+- Actions の画面で **backtest → Run workflow**、または
+- `backtest-request.txt` の `cutoff` / `top_n` を書き換えて push する
+
 - 毎朝 Actions がコミットするので、手元で作業する前に `git pull` してください。
 - 非公開リポジトリの Actions 無料枠は月 2,000 分です。毎日の更新は1回数分です。
 

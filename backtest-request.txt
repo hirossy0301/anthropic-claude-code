@@ -1,0 +1,4 @@
+# このファイルを変更して push すると、GitHub Actions の backtest が実行される。
+# cutoff より前の日で学習し、cutoff 以降で検証する。top_n は3連単の買い目の点数。
+cutoff=2025-10-01
+top_n=5
