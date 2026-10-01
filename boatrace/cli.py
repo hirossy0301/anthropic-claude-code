@@ -107,7 +107,7 @@ def main(argv=None) -> None:
             out = a.out_dir / config.model_path(mode).name
             model = WinModel(features=list(features), calibrate=config.CALIBRATE).fit(rows)
             model.save(out)
-            print(f"{mode}: {rows.groupby(RACE_KEYS).ngroups} レースで学習 (較正 alpha={[round(x, 3) for x in np.atleast_1d(model.calib_alpha)]}) -> {out}")
+            print(f"{mode}: {rows.groupby(RACE_KEYS).ngroups} レースで学習 (較正 alpha={[round(float(x), 3) for x in np.atleast_1d(model.calib_alpha)]}) -> {out}")
         (a.out_dir / "model_version.txt").write_text(f"{config.MODEL_VERSION}\n", encoding="utf-8")
     elif a.cmd == "export":
         from .serve import export
