@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -61,10 +61,13 @@ def upsert(conn: sqlite3.Connection, table: str, rows: list[dict]) -> None:
     conn.executemany(sql, [tuple(r[c] for c in cols) for r in rows])
 
 
-def ingest_dir(conn: sqlite3.Connection, raw_dir: Path = config.RAW_DIR, log=print) -> None:
-    """raw_dir の b*.txt / k*.txt をすべて DB に取り込む。"""
+def ingest_dir(conn: sqlite3.Connection, raw_dir: Path = config.RAW_DIR, log=print,
+               since: date | None = None) -> None:
+    """raw_dir の b*.txt / k*.txt を DB に取り込む。since を指定するとその日以降のファイルだけ。"""
     for path in sorted(raw_dir.glob("[bk]*.txt")):
         d = datetime.strptime(path.stem[1:], "%y%m%d").date()
+        if since and d < since:
+            continue
         text = path.read_text(encoding="utf-8")
         if path.stem[0] == "b":
             rows = parse_program(text, d)

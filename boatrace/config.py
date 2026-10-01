@@ -9,6 +9,8 @@ RAW_DIR = DATA_DIR / "raw"  # 解凍済みテキスト (b/k YYMMDD.txt)
 LZH_DIR = DATA_DIR / "lzh"  # ダウンロードした圧縮ファイル
 DB_PATH = DATA_DIR / "boatrace.db"
 MODEL_DIR = DATA_DIR
+# デプロイ用の軽量データ (直近の特徴量とモデル)。GitHub Actions が毎朝更新してコミットする
+SERVE_DIR = Path(os.environ.get("BOATRACE_SERVE_DIR", ROOT / "serve"))
 
 
 def model_path(mode: str) -> Path:

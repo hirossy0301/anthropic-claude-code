@@ -21,11 +21,11 @@ class WinModel:
     kind: str = "lgbm"  # "lgbm" or "logreg"
     features: list[str] = field(default_factory=lambda: list(FEATURES))
     estimator: object = None
-    medians: pd.Series | None = None  # logreg の欠損補完用 (学習データの中央値)
+    medians: dict | None = None  # logreg の欠損補完用 (学習データの中央値。pickle の版依存を避けるため dict)
 
     def fit(self, df: pd.DataFrame) -> "WinModel":
         X, y = df[self.features], df["win"].astype(int)
-        self.medians = X.median().fillna(0)  # 全欠損の列 (気温未取得など) は 0
+        self.medians = X.median().fillna(0).to_dict()  # 全欠損の列 (気温未取得など) は 0
         if self.kind == "lgbm":
             import lightgbm as lgb
             self.estimator = lgb.LGBMClassifier(

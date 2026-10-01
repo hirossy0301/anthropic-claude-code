@@ -1,0 +1,96 @@
+# 毎朝の更新: 公式データと気温を取り込み、直近の特徴量を serve/ に書き出してコミットする。
+# 3年分の DB は大きくリポジトリに置けないため、Actions のキャッシュで実行間に引き継ぐ。
+# キャッシュが無い (初回・7日以上未使用で消えた) 場合は3年分を取り直す (約3時間)。
+name: daily-update
+
+on:
+  schedule:
+    - cron: "30 21 * * *"  # 毎日 06:30 JST
+    - cron: "30 0 * * *"   # 毎日 09:30 JST (朝の時点で番組表が未公開だった場合の取り直し)
+  workflow_dispatch:
+    inputs:
+      retrain:
+        description: "モデルを再学習する"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: daily-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore data cache
+        id: cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: boatrace-data-${{ github.run_id }}
+          restore-keys: boatrace-data-
+
+      - name: Seed 3 years of data (no cache)
+        if: steps.cache.outputs.cache-matched-key == ''
+        run: |
+          START=$(TZ=Asia/Tokyo date -d "3 years ago" +%F)
+          END=$(TZ=Asia/Tokyo date +%F)
+          python -m boatrace.cli download --start "$START" --end "$END" --workers 3
+          python -m boatrace.cli ingest
+          python -m boatrace.cli weather --start "$START" --end "$END"
+
+      - name: Daily update
+        run: python -m boatrace.cli daily
+
+      - name: Retrain models (weekly, first run, or on request)
+        env:
+          SEEDED: ${{ steps.cache.outputs.cache-matched-key == '' }}
+          REQUESTED: ${{ inputs.retrain == true }}
+          EVENT_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          # 月曜 06:30 JST の回 (UTC では日曜 21:30) に週1回再学習する
+          WEEKLY=false
+          if [ "$EVENT_SCHEDULE" = "30 21 * * *" ] && [ "$(date -u +%u)" = "7" ]; then WEEKLY=true; fi
+          if [ "$SEEDED" = "true" ] || [ "$REQUESTED" = "true" ] || [ "$WEEKLY" = "true" ] \
+             || [ ! -f serve/model_morning.pkl ]; then
+            python -m boatrace.cli train --out-dir serve
+          else
+            echo "skip retrain"
+          fi
+
+      - name: Drop downloaded archives (already extracted)
+        if: always()
+        run: rm -rf data/lzh
+
+      - name: Save data cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data
+          key: boatrace-data-${{ github.run_id }}
+
+      - name: Commit serve/
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add serve
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "Update serve data $(TZ=Asia/Tokyo date '+%F %H:%M') JST"
+            git pull --rebase origin "${GITHUB_REF_NAME}"  # 実行中に別のコミットが入っていても push できるように
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi

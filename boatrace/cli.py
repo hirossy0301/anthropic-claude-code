@@ -9,11 +9,14 @@
   predict --date 2026-09-29 --venue 12 --race 1  朝の予想
   predict ... --mode prerace --wind-dir 北西 --wind-speed 3 --wave 2 --courses 1,2,3,4,5,6
                                                  直前の予想 (直前情報を入力)
+  export --days 8                                デプロイ用に直近の特徴量を serve/ に書き出し
+  daily                                          毎朝の更新 (直近の取得→取り込み→気温→書き出し)
 """
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from pathlib import Path
+from datetime import date, timedelta
 
 from . import config, db
 from .backtest import run_backtest
@@ -43,7 +46,8 @@ def main(argv=None) -> None:
     s.add_argument("--start", type=date.fromisoformat, required=True)
     s.add_argument("--end", type=date.fromisoformat, required=True)
     s.add_argument("--workers", type=int, default=1, help="並列数 (サーバー負荷を考え 3 以下を推奨)")
-    sub.add_parser("ingest")
+    s = sub.add_parser("ingest")
+    s.add_argument("--since", type=date.fromisoformat, help="この日以降のファイルだけ取り込む")
     s = sub.add_parser("weather")
     s.add_argument("--start", type=date.fromisoformat, required=True)
     s.add_argument("--end", type=date.fromisoformat, required=True)
@@ -53,7 +57,13 @@ def main(argv=None) -> None:
     s = sub.add_parser("backtest")
     s.add_argument("--cutoff", required=True)
     s.add_argument("--top-n", type=int, default=5)
-    sub.add_parser("train")
+    s = sub.add_parser("train")
+    s.add_argument("--out-dir", type=Path, default=config.MODEL_DIR, help="モデルの保存先 (デプロイ用は serve)")
+    s = sub.add_parser("export")
+    s.add_argument("--days", type=int, default=8, help="何日前からの分を書き出すか")
+    s = sub.add_parser("daily")
+    s.add_argument("--date", type=date.fromisoformat, help="基準日 (省略時は日本時間の今日)")
+    s.add_argument("--days", type=int, default=8)
     s = sub.add_parser("predict")
     s.add_argument("--date", required=True)
     s.add_argument("--venue", type=int, required=True)
@@ -70,7 +80,7 @@ def main(argv=None) -> None:
         from .download import download_range
         download_range(a.start, a.end, workers=a.workers)
     elif a.cmd == "ingest":
-        db.ingest_dir(db.connect())
+        db.ingest_dir(db.connect(), since=a.since)
     elif a.cmd == "weather":
         from .weather import fetch_temperatures
         fetch_temperatures(db.connect(), a.start, a.end)
@@ -85,8 +95,25 @@ def main(argv=None) -> None:
         feat, _ = load_features()
         rows = training_rows(feat)
         for mode, features in FEATURE_SETS.items():
-            WinModel(features=list(features)).fit(rows).save(config.model_path(mode))
-            print(f"{mode}: {rows.groupby(RACE_KEYS).ngroups} レースで学習 -> {config.model_path(mode)}")
+            out = a.out_dir / config.model_path(mode).name
+            WinModel(features=list(features)).fit(rows).save(out)
+            print(f"{mode}: {rows.groupby(RACE_KEYS).ngroups} レースで学習 -> {out}")
+    elif a.cmd == "export":
+        from .serve import export
+        feat, races = load_features()
+        print(export(feat, races, config.SERVE_DIR, a.days))
+    elif a.cmd == "daily":
+        from .download import download_range
+        from .serve import export, today_jst
+        from .weather import fetch_temperatures
+        today = a.date or today_jst()
+        # 前々日〜翌日: 前日の成績 (K) と当日・翌日の番組表 (B)。未公開の日は 404 で飛ばし、次回再取得する
+        download_range(today - timedelta(days=2), today + timedelta(days=1))
+        conn = db.connect()
+        db.ingest_dir(conn, since=today - timedelta(days=3))
+        fetch_temperatures(conn, today - timedelta(days=2), today + timedelta(days=1))
+        feat, races = load_features()
+        print(export(feat, races, config.SERVE_DIR, a.days, today=today))
     elif a.cmd == "predict":
         feat, _ = load_features()
         prerace = None

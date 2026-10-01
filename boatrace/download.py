@@ -33,8 +33,16 @@ def extract_lzh(lzh_path: Path) -> str:
     return b"".join(parts).decode("cp932", errors="replace")
 
 
+# 当日の競走成績は、レースが終わっていない場ごとにこの文言だけが入った状態で公開される
+NOT_FINAL_MARK = "全レース終了後に登録"
+
+
+def is_final(text: str) -> bool:
+    return NOT_FINAL_MARK not in text
+
+
 def fetch_day(kind: str, d: date, session: requests.Session) -> Path | None:
-    """1日分を取得して解凍テキストを保存する。開催なし(404)の日は None。"""
+    """1日分を取得して解凍テキストを保存する。開催なし(404)・未確定の日は None。"""
     out = raw_path(kind, d)
     if out.exists():
         return out
@@ -46,8 +54,11 @@ def fetch_day(kind: str, d: date, session: requests.Session) -> Path | None:
     lzh = config.LZH_DIR / f"{KINDS[kind]}{d.strftime('%y%m%d')}.lzh"
     lzh.write_bytes(resp.content)
     config.RAW_DIR.mkdir(parents=True, exist_ok=True)
+    text = extract_lzh(lzh)
+    if not is_final(text):
+        return None  # レース中の場があるため保存しない (保存すると取得済み扱いになり、確定版を取り直せない)
     tmp = out.with_suffix(".tmp")  # 途中で止まっても壊れたファイルを「取得済み」と誤認しないように
-    tmp.write_text(extract_lzh(lzh), encoding="utf-8")
+    tmp.write_text(text, encoding="utf-8")
     tmp.replace(out)
     return out
 

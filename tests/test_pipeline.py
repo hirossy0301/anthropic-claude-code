@@ -178,3 +178,51 @@ def test_program_boat_number_three_digits_without_space():
     (r,) = parse_program(text, D)
     assert (r["motor_no"], r["motor_2_rate"], r["boat_no"], r["boat_2_rate"]) == (8, 44.68, 114, 42.16)
     assert r["deadline"] == "08:44" and r["race_name"] == "サンライズV"
+
+
+def test_ingest_since_skips_older_files(tmp_path):
+    generate(tmp_path / "raw", date(2026, 1, 1), 3, venues=(1,))
+    conn = db.connect(tmp_path / "t.db")
+    db.ingest_dir(conn, tmp_path / "raw", log=lambda *_: None, since=date(2026, 1, 3))
+    days = {r[0] for r in conn.execute("SELECT DISTINCT race_date FROM entries")}
+    assert days == {"2026-01-03"}
+
+
+def test_serve_export_roundtrip_and_predict(tmp_path):
+    from boatrace import serve
+    from boatrace.cli import predict_race
+    conn, feat = _feat(tmp_path, 20)
+    races = db.load_races(conn)
+    meta = serve.export(feat, races, tmp_path / "serve", days=3, today=date(2026, 1, 20))
+    assert (meta["first_date"], meta["last_date"]) == ("2026-01-17", "2026-01-20")
+    f, r, m = serve.load(tmp_path / "serve")
+    assert set(f["race_date"]) == {"2026-01-17", "2026-01-18", "2026-01-19", "2026-01-20"}
+    assert m["races"] == 4 * 2 * 12 and len(r) == 4 * 2 * 12
+    # 書き出した特徴量だけで、DB と同じ予想になる
+    model = WinModel(features=list(FEATURE_SETS["prerace"])).fit(training_rows(feat))
+    key = ("2026-01-20", 1, 5)
+    g_db, _ = predict_race(feat, model, *key, prerace={"wind_dir": "北", "wind_speed": 4})
+    g_sv, _ = predict_race(f, model, *key, prerace={"wind_dir": "北", "wind_speed": 4})
+    assert g_sv["win_prob"].to_numpy() == pytest.approx(g_db["win_prob"].to_numpy())
+
+
+def test_results_not_final_are_not_saved(tmp_path, monkeypatch):
+    from boatrace import config, download
+    monkeypatch.setattr(config, "RAW_DIR", tmp_path / "raw")
+    monkeypatch.setattr(config, "LZH_DIR", tmp_path / "lzh")
+    placeholder = "STARTK\n24KBGN\nボートレース大　村\nデータは、この場の全レース終了後に登録されます。\n24KEND\n"
+
+    class Resp:
+        status_code, content = 200, b"lzh"
+        def raise_for_status(self):
+            pass
+
+    class Session:
+        def get(self, *a, **k):
+            return Resp()
+
+    monkeypatch.setattr(download, "extract_lzh", lambda p: placeholder)
+    assert download.fetch_day("K", date(2026, 10, 1), Session()) is None
+    assert not download.raw_path("K", date(2026, 10, 1)).exists()  # 次回また取りに行く
+    monkeypatch.setattr(download, "extract_lzh", lambda p: RESULT)
+    assert download.fetch_day("K", date(2026, 10, 1), Session()).exists()

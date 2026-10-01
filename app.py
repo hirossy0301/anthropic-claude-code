@@ -2,7 +2,7 @@
 import pandas as pd
 import streamlit as st
 
-from boatrace import config
+from boatrace import config, serve
 from boatrace.cli import load_features, predict_race
 from boatrace.model import WinModel
 from boatrace.venues import SURFACE_LABEL, VENUE_INFO, WATER_LABEL, WIND_DEG
@@ -12,22 +12,42 @@ st.title("競艇 統計予想")
 
 MODES = {"morning": "朝の予想（前日までの情報）", "prerace": "直前の予想（直前情報を入力）"}
 
-if not config.DB_PATH.exists() or not all(config.model_path(m).exists() for m in MODES):
-    st.warning("DB またはモデルがありません。README の手順で ingest → train を実行してください。")
+# デプロイ時は serve/ (GitHub Actions が毎朝更新) を、ローカルでは data/ の DB とモデルを使う
+USE_SERVE = serve.available(config.SERVE_DIR)
+MODEL_DIR = config.SERVE_DIR if USE_SERVE else config.MODEL_DIR
+
+
+def model_file(mode: str):
+    return MODEL_DIR / config.model_path(mode).name
+
+
+if not (USE_SERVE or config.DB_PATH.exists()) or not all(model_file(m).exists() for m in MODES):
+    st.warning("データまたはモデルがありません。README の手順で ingest → train を実行してください。")
     st.stop()
 
 
 @st.cache_data
-def cached_features():
-    return load_features()
+def cached_features(version: float):
+    """version (ファイルの更新時刻) が変わると読み直す。"""
+    if USE_SERVE:
+        return serve.load(config.SERVE_DIR)
+    feat, races = load_features()
+    return feat, races, {}
 
 
 @st.cache_resource
-def cached_model(mode: str):
-    return WinModel.load(config.model_path(mode))
+def cached_model(mode: str, version: float):
+    return WinModel.load(model_file(mode))
 
 
-feat, races = cached_features()
+def _mtime(path) -> float:
+    return path.stat().st_mtime if path.exists() else 0.0
+
+
+data_version = _mtime(config.SERVE_DIR / "features.parquet" if USE_SERVE else config.DB_PATH)
+feat, races, meta = cached_features(data_version)
+if meta.get("generated_at"):
+    st.caption(f"データ更新: {meta['generated_at'].replace('T', ' ')}（{meta['first_date']}〜{meta['last_date']}）")
 
 dates = sorted(feat["race_date"].unique(), reverse=True)
 c1, c2, c3 = st.columns(3)
@@ -67,7 +87,7 @@ if mode == "prerace":
                "wind_speed": 0 if wind_dir == "無風" else wind_speed, "wave": wave, "courses": courses}
 
 try:
-    g, tri = predict_race(feat, cached_model(mode), race_date, venue, race_no, prerace)
+    g, tri = predict_race(feat, cached_model(mode, _mtime(model_file(mode))), race_date, venue, race_no, prerace)
 except ValueError as e:
     st.error(str(e))
     st.stop()
