@@ -57,6 +57,7 @@ def main(argv=None) -> None:
     s = sub.add_parser("backtest")
     s.add_argument("--cutoff", required=True)
     s.add_argument("--top-n", type=int, default=5)
+    s.add_argument("--report", type=Path, help="詳細 (信頼区間・較正・四半期・特徴量の寄与) を Markdown で保存")
     s = sub.add_parser("train")
     s.add_argument("--out-dir", type=Path, default=config.MODEL_DIR, help="モデルの保存先 (デプロイ用は serve)")
     s = sub.add_parser("export")
@@ -90,7 +91,13 @@ def main(argv=None) -> None:
         print(f"合成データを {config.RAW_DIR} に生成しました (実データではありません)")
     elif a.cmd == "backtest":
         feat, races = load_features()
-        print(run_backtest(feat, races, a.cutoff, a.top_n).round(4).to_string())
+        if a.report:
+            from .backtest import report
+            text = report(feat, races, a.cutoff, a.top_n)
+            a.report.write_text(text, encoding="utf-8")
+            print(text)
+        else:
+            print(run_backtest(feat, races, a.cutoff, a.top_n).round(4).to_string())
     elif a.cmd == "train":
         feat, _ = load_features()
         rows = training_rows(feat)

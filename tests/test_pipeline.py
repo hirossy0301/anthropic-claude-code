@@ -226,3 +226,18 @@ def test_results_not_final_are_not_saved(tmp_path, monkeypatch):
     assert not download.raw_path("K", date(2026, 10, 1)).exists()  # 次回また取りに行く
     monkeypatch.setattr(download, "extract_lzh", lambda p: RESULT)
     assert download.fetch_day("K", date(2026, 10, 1), Session()).exists()
+
+
+def test_backtest_report_sections(tmp_path):
+    from boatrace.backtest import paired_difference, race_records, report
+    conn, feat = _feat(tmp_path, 40)
+    races = db.load_races(conn)
+    text = report(feat, races, cutoff="2026-02-01")
+    for heading in ("## 全体", "## 追加した要因の効果", "## 較正", "## 四半期ごと", "## 特徴量の寄与"):
+        assert heading in text
+    # 同じ記録同士の差は 0
+    test = training_rows(feat)
+    test["p"] = 1 / 6
+    rec = race_records(test, races, "p", 5)
+    d = paired_difference(rec, rec)
+    assert d["win_accuracy"][0] == 0 and d["log_loss"][0] == pytest.approx(0)

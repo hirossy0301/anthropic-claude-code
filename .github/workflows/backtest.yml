@@ -1,0 +1,51 @@
+# 3年分のデータ (daily-update が Actions のキャッシュに保存したもの) でバックテストする。
+# 結果は実行ページの Summary と、成果物 backtest-report に Markdown で出る。
+name: backtest
+
+on:
+  workflow_dispatch:
+    inputs:
+      cutoff:
+        description: "この日より前で学習し、この日以降で検証する"
+        default: "2025-10-01"
+      top_n:
+        description: "3連単の買い目の点数"
+        default: "5"
+
+permissions:
+  contents: read
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: Restore data cache
+        uses: actions/cache/restore@v4
+        with:
+          path: data
+          key: boatrace-data-backtest-${{ github.run_id }}
+          restore-keys: boatrace-data-
+          fail-on-cache-miss: true
+
+      - name: Backtest
+        env:
+          CUTOFF: ${{ inputs.cutoff }}
+          TOP_N: ${{ inputs.top_n }}
+        run: |
+          python -m boatrace.cli backtest --cutoff "$CUTOFF" --top-n "$TOP_N" --report report.md
+          cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: backtest-report
+          path: report.md
