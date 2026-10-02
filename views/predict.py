@@ -69,16 +69,52 @@ st.caption(
 
 mode = st.radio("予想の種類", list(MODES), format_func=MODES.get, horizontal=True)
 prerace = None
+
+
+@st.cache_data(ttl=60, show_spinner="公式サイトから直前情報を取得中…")
+def cached_beforeinfo(race_date: str, venue: int, race_no: int) -> dict:
+    """同じレースは60秒以内なら取り直さない (公式サイトへのアクセスを減らすため)。"""
+    from boatrace.beforeinfo import fetch_beforeinfo
+    return fetch_beforeinfo(race_date, venue, race_no)
+
+
 if mode == "prerace":
-    st.markdown("**直前情報**（公式サイトの直前情報を見て入力。確定済みのレースは実際の値が入っています）")
-    d1, d2, d3, d4 = st.columns(4)
+    st.markdown("**直前情報**（「直前情報を取得」で公式サイトの値を入れるか、手で入力。確定済みのレースは実際の値が入っています）")
     dirs = ["無風"] + list(WIND_DEG)
-    cur_dir = first["wind_dir"] if first["wind_dir"] in dirs else "無風"
-    wind_dir = d1.selectbox("風向", dirs, index=dirs.index(cur_dir))
-    wind_speed = d2.number_input("風速 (m)", 0, 20, int(0 if pd.isna(first["wind_speed"]) else first["wind_speed"]))
-    wave = d3.number_input("波高 (cm)", 0, 50, int(0 if pd.isna(first["wave"]) else first["wave"]))
-    default_courses = ",".join(str(int(c)) for c in race_rows.sort_values("lane")["course"])
-    courses_text = d4.text_input("進入コース（枠1〜6の順）", default_courses)
+    k = f"{race_date}_{venue}_{race_no}"  # レースを変えたら入力欄も初期値に戻す
+    if f"wind_dir_{k}" not in st.session_state:
+        st.session_state[f"wind_dir_{k}"] = first["wind_dir"] if first["wind_dir"] in dirs else "無風"
+        st.session_state[f"wind_speed_{k}"] = int(0 if pd.isna(first["wind_speed"]) else first["wind_speed"])
+        st.session_state[f"wave_{k}"] = int(0 if pd.isna(first["wave"]) else first["wave"])
+        st.session_state[f"courses_{k}"] = ",".join(str(int(c)) for c in race_rows.sort_values("lane")["course"])
+    if st.button("直前情報を取得（公式サイト）", help="このレースの直前情報ページを1回だけ取得し、風・波・スタート展示の進入を入れます"):
+        try:
+            bi = cached_beforeinfo(race_date, int(venue), int(race_no))
+        except Exception as e:
+            st.error(f"直前情報を取得できませんでした: {e}")
+        else:
+            if bi["wind_speed"] is None and bi["courses"] is None:
+                st.warning("直前情報がまだ発表されていません（展示航走の後に出ます）。")
+            else:
+                st.session_state[f"wind_dir_{k}"] = bi["wind_dir"] or "無風"
+                if bi["wind_speed"] is not None:
+                    st.session_state[f"wind_speed_{k}"] = int(round(bi["wind_speed"]))
+                if bi["wave"] is not None:
+                    st.session_state[f"wave_{k}"] = int(round(bi["wave"]))
+                if bi["courses"]:
+                    st.session_state[f"courses_{k}"] = ",".join(map(str, bi["courses"]))
+                st.session_state[f"before_{k}"] = bi
+    bi = st.session_state.get(f"before_{k}")
+    if bi:
+        sts = " ".join(f"{lane}号艇 {v or '-'}" for lane, v in sorted((bi["exhibition_st"] or {}).items()))
+        st.caption(f"公式の直前情報（{bi['updated'] or '-'}）: 気温 {bi['temperature'] or '-'}℃ ／ "
+                   f"水温 {bi['water_temperature'] or '-'}℃ ／ 展示のST: {sts or '-'}"
+                   + ("" if bi["courses"] else " ／ 展示の進入が6艇そろっていないため、進入コースは入れていません"))
+    d1, d2, d3, d4 = st.columns(4)
+    wind_dir = d1.selectbox("風向", dirs, key=f"wind_dir_{k}")
+    wind_speed = d2.number_input("風速 (m)", 0, 20, key=f"wind_speed_{k}")
+    wave = d3.number_input("波高 (cm)", 0, 50, key=f"wave_{k}")
+    courses_text = d4.text_input("進入コース（枠1〜6の順）", key=f"courses_{k}")
     try:
         courses = [int(c) for c in courses_text.split(",")]
     except ValueError:
