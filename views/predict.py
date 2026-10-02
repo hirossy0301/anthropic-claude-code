@@ -140,7 +140,14 @@ if mode == "prerace":
                "exhibition_times": exhibition_times}
 
 try:
-    g, tri = predict_race(feat, cached_model(mode, _mtime(model_file(mode))), race_date, venue, race_no, prerace)
+    # 展示タイムがあり、展示タイムありのモデルが学習済みならそちらを使う
+    model_name = mode
+    if prerace and prerace.get("exhibition_times") and model_file("prerace_exh").exists():
+        model_name = "prerace_exh"
+    if mode == "prerace":
+        st.caption("使ったモデル: " + ("直前の予想 ＋ 展示タイム" if model_name == "prerace_exh" else
+                                    "直前の予想（展示タイムなし）"))
+    g, tri = predict_race(feat, cached_model(model_name, _mtime(model_file(model_name))), race_date, venue, race_no, prerace)
 except ValueError as e:
     st.error(str(e))
     st.stop()

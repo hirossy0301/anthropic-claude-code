@@ -28,7 +28,7 @@ import numpy as np
 
 from . import config, db
 from .backtest import run_backtest
-from .features import FEATURE_SETS, RACE_KEYS, apply_prerace, build_features, training_rows
+from .features import FEATURE_SETS, RACE_KEYS, TRAINED_MODELS, apply_prerace, build_features, training_rows
 from .model import WinModel, trifecta_probs
 
 
@@ -136,7 +136,7 @@ def main(argv=None) -> None:
     elif a.cmd == "train":
         feat, _ = load_features()
         rows = training_rows(feat)
-        for mode, features in FEATURE_SETS.items():
+        for mode, features in TRAINED_MODELS.items():
             out = a.out_dir / config.model_path(mode).name
             model = WinModel(features=list(features), calibrate=config.CALIBRATE).fit(rows)
             model.save(out)
@@ -221,7 +221,8 @@ def main(argv=None) -> None:
                                             if a.exhibition else None)}
         elif a.temperature is not None:
             prerace = {"temperature": a.temperature}
-        model = WinModel.load(config.model_path(a.mode))
+        mode = "prerace_exh" if prerace and prerace.get("exhibition_times") else a.mode
+        model = WinModel.load(config.model_path(mode))
         g, tri = predict_race(feat, model, a.date, a.venue, a.race, prerace)
         print(g[["lane", "course", "racer_name", "racer_class", "nat_win_rate", "motor_2_rate", "win_prob"]]
               .round(3).to_string(index=False))

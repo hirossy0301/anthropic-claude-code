@@ -29,10 +29,13 @@ FEATURES_PRERACE = FEATURES_MORNING + [
     "venue", "course", "venue_course_win_actual", "wind_speed", "wind_sin", "wind_cos", "wave",
 ]
 # 展示タイム (展示航走のタイム。締切の15〜20分前に発表)。レース内の平均との差と順位も使う。
-# バックテストで効果を確かめてから FEATURE_SETS["prerace"] に入れる
+# 3年分のバックテストで、直前の予想に加えると 1着的中率 +0.42% [+0.24, +0.60]、対数損失 -0.0157 [-0.0174, -0.0140]
 FEATURES_EXHIBITION = ["exh_time", "exh_diff", "exh_rank"]
 FEATURES_PRERACE_EXH = FEATURES_PRERACE + FEATURES_EXHIBITION
 FEATURE_SETS = {"morning": FEATURES_MORNING, "prerace": FEATURES_PRERACE}
+# 学習して保存するモデル。展示タイムが無いとき (発表前・未入力) は "prerace"、あるときは "prerace_exh" を使う
+# (展示タイムありのモデルに空欄を渡すと、学習中ほぼ見ていない状態になり予想が崩れうるため分ける)
+TRAINED_MODELS = {**FEATURE_SETS, "prerace_exh": FEATURES_PRERACE_EXH}
 # 決まり手の予測に使う選手の傾向: (列名, 決まり手, 1コースの出走で数えるか, 事前分布の値)
 KIMARITE_HISTORY = [
     ("racer_nige_rate", "逃げ", True, 0.5),

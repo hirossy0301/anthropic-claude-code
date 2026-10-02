@@ -16,10 +16,10 @@
 | `boatrace/parsers.py` | Shift_JIS 固定長テキストを NFKC 正規化 + 正規表現で解析 |
 | `boatrace/db.py` | SQLite（`entries` 出走表 / `results` 着順・ST / `races` 払戻） |
 | `boatrace/features.py` | 特徴量。履歴系は **前日までのデータのみ** で計算（リーク防止） |
-| `boatrace/model.py` | 1着の二値分類 → レース内で正規化。3連単は Plackett-Luce で計算。朝用・直前用の2モデル |
+| `boatrace/model.py` | 1着の二値分類 → レース内で正規化。3連単は Plackett-Luce で計算。朝用・直前用・直前＋展示タイム用の3モデル |
 | `boatrace/backtest.py` | 時系列分割で評価（1着的中率・対数損失・3連単上位N点の的中率/回収率） |
 | `boatrace/kimarite.py` | 1マークの展開予想（決まり手）。1着確率 × 勝ったときの決まり手の確率 |
-| `boatrace/beforeinfo.py` | 公式の直前情報（風向・風速・波高・気温・水温・スタート展示の進入）の取得。アプリのボタンから1レース1回 |
+| `boatrace/beforeinfo.py` | 公式の直前情報（展示タイム・風向・風速・波高・気温・水温・スタート展示の進入）の取得。アプリのボタンから1レース1回 |
 | `boatrace/odds.py` | 公式サイトの単勝オッズ（締切時）の取得・解析・キャッシュ |
 | `boatrace/ev.py` | 単勝の期待値（確率×オッズ）で買うバックテスト、モデルと市場の確率の比較 |
 | `boatrace/synthetic.py` | 動作確認用の **合成データ**（実データではない） |
