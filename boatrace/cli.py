@@ -14,6 +14,8 @@
   daily                                          毎朝の更新 (直近の取得→取り込み→気温→書き出し)
   odds-fetch --cutoff 2025-10-01 --sample 2000   検証期間から無作為に選んだレースの締切時単勝オッズを取得
   ev-backtest --cutoff 2025-10-01                取得済みオッズで、単勝の期待値で買うバックテスト
+  paper-trade --venues 4                         締切5分前の単勝オッズで期待値を記録 (お金は賭けない。自宅 PC 用)
+  paper-report                                   記録を結果と照らし合わせて回収率を出す
 """
 from __future__ import annotations
 
@@ -86,6 +88,11 @@ def main(argv=None) -> None:
     s.add_argument("--budget-minutes", type=float, default=270, help="取得に使う時間の上限 (分)")
     s = sub.add_parser("ev-backtest")
     s.add_argument("--cutoff", required=True)
+    s.add_argument("--report", type=Path, help="Markdown で保存")
+    s = sub.add_parser("paper-trade")
+    s.add_argument("--venues", type=int, default=4, help="記録する場の数 (日付で決まる無作為抽出)")
+    s.add_argument("--minutes-before", type=float, default=5, help="締切の何分前にオッズを取るか")
+    s = sub.add_parser("paper-report")
     s.add_argument("--report", type=Path, help="Markdown で保存")
     s = sub.add_parser("predict")
     s.add_argument("--date", required=True)
@@ -165,6 +172,17 @@ def main(argv=None) -> None:
         from .odds import load_cached
         feat, races = load_features()
         text = report(feat, races, load_cached(), a.cutoff)
+        if a.report:
+            a.report.write_text(text, encoding="utf-8")
+        print(text)
+    elif a.cmd == "paper-trade":
+        from .paper import run
+        run(n_venues=a.venues, minutes_before=a.minutes_before)
+    elif a.cmd == "paper-report":
+        from . import paper, serve
+        feat, races, _ = serve.load(config.SERVE_DIR)
+        print(f"新たに精算: {paper.settle(feat, races)} レース")
+        text = paper.report(paper.load_records())
         if a.report:
             a.report.write_text(text, encoding="utf-8")
         print(text)
