@@ -133,23 +133,67 @@ def load_records(out_dir: Path | None = None) -> pd.DataFrame:
     return pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
 
 
+def fill_results(df: pd.DataFrame, feat: pd.DataFrame, races: pd.DataFrame) -> pd.Series:
+    """df の未精算の行に着順と単勝払戻を書き込み、今回書き込んだ行の印を返す。"""
+    todo = df["win_payout"].isna().to_numpy()
+    fin = feat[RACE_KEYS + ["lane", "finish"]].rename(columns={"finish": "_finish"})
+    pay = races[RACE_KEYS + ["win_payout"]].rename(columns={"win_payout": "_payout"})
+    key = df[RACE_KEYS + ["lane"]].astype({"race_date": str, "venue": int, "race_no": int, "lane": int})
+    m = key.merge(fin, on=RACE_KEYS + ["lane"], how="left").merge(pay, on=RACE_KEYS, how="left")
+    known = todo & m["_payout"].notna().to_numpy()
+    df.loc[known, "finish"] = m.loc[known, "_finish"].to_numpy()
+    df.loc[known, "win_payout"] = m.loc[known, "_payout"].to_numpy()
+    return pd.Series(known, index=df.index)
+
+
 def settle(feat: pd.DataFrame, races: pd.DataFrame, out_dir: Path | None = None) -> int:
     """結果が出たレースの着順と単勝払戻を CSV に書き込む (serve/ は直近8日分しか持たないため、記録側に残す)。"""
     n = 0
     for path in sorted((out_dir or paper_dir()).glob("*.csv")):
         df = pd.read_csv(path)
-        todo = df["finish"].isna()
-        if not todo.any():
+        if not df["win_payout"].isna().any():
             continue
-        fin = feat[RACE_KEYS + ["lane", "finish"]].rename(columns={"finish": "_finish"})
-        pay = races[RACE_KEYS + ["win_payout"]].rename(columns={"win_payout": "_payout"})
-        m = df.merge(fin, on=RACE_KEYS + ["lane"], how="left").merge(pay, on=RACE_KEYS, how="left")
-        known = todo & m["_payout"].notna().to_numpy()
-        df.loc[known, "finish"] = m.loc[known, "_finish"].to_numpy()
-        df.loc[known, "win_payout"] = m.loc[known, "_payout"].to_numpy()
+        known = fill_results(df, feat, races)
         df.to_csv(path, index=False)
         n += int(known.sum() // 6)
     return n
+
+
+# ---- Supabase で記録する場合 (PC 不要。Edge Function が締切前のオッズを記録する) ----
+
+def plan_rows(feat: pd.DataFrame, model, day: date, n_venues: int = 4) -> list[dict]:
+    """その日に記録する n 場の全レースについて、朝のモデルの1着確率と締切日時を返す (paper_plan 用)。"""
+    today = feat[feat["race_date"] == day.isoformat()]
+    if today.empty:
+        return []
+    venues = pick_venues(today["venue"].unique(), day, n_venues)
+    g = today[today["venue"].isin(venues)].copy()
+    g["win_prob"] = model.predict_win_prob(g).to_numpy()
+    deadlines = {(v, r): d for d, v, r in schedule(g, day, venues)}
+    rows = []
+    for row in g.itertuples():
+        d = deadlines.get((int(row.venue), int(row.race_no)))
+        if d is None:
+            continue
+        rows.append({"race_date": row.race_date, "venue": int(row.venue), "race_no": int(row.race_no),
+                     "lane": int(row.lane), "deadline": d.isoformat(), "racer_name": row.racer_name,
+                     "win_prob": float(row.win_prob)})
+    return rows
+
+
+def settle_rows(records: pd.DataFrame, feat: pd.DataFrame, races: pd.DataFrame) -> list[dict]:
+    """Supabase の未精算の記録に、着順と単勝払戻を付けた行 (主キー + 結果の列だけ) を返す。"""
+    if records.empty:
+        return []
+    df = records.copy()
+    for c in ("finish", "win_payout"):
+        if c not in df:
+            df[c] = np.nan
+    known = fill_results(df, feat, races)
+    out = df.loc[known, RACE_KEYS + ["lane", "finish", "win_payout"]]
+    return [{"race_date": r.race_date, "venue": int(r.venue), "race_no": int(r.race_no), "lane": int(r.lane),
+             "finish": None if pd.isna(r.finish) else int(r.finish), "win_payout": int(r.win_payout)}
+            for r in out.itertuples()]
 
 
 def report(records: pd.DataFrame) -> str:

@@ -16,6 +16,7 @@
   ev-backtest --cutoff 2025-10-01                取得済みオッズで、単勝の期待値で買うバックテスト
   paper-trade --venues 4                         締切5分前の単勝オッズで期待値を記録 (お金は賭けない。自宅 PC 用)
   paper-report                                   記録を結果と照らし合わせて回収率を出す
+  paper-plan / paper-settle                      Supabase で記録する場合の、毎朝の計画の書き込みと精算 (GitHub Actions 用)
 """
 from __future__ import annotations
 
@@ -94,6 +95,10 @@ def main(argv=None) -> None:
     s.add_argument("--minutes-before", type=float, default=5, help="締切の何分前にオッズを取るか")
     s = sub.add_parser("paper-report")
     s.add_argument("--report", type=Path, help="Markdown で保存")
+    s = sub.add_parser("paper-plan")
+    s.add_argument("--venues", type=int, default=4)
+    s.add_argument("--date", type=date.fromisoformat, help="省略時は日本時間の今日")
+    sub.add_parser("paper-settle")
     s = sub.add_parser("predict")
     s.add_argument("--date", required=True)
     s.add_argument("--venue", type=int, required=True)
@@ -186,6 +191,24 @@ def main(argv=None) -> None:
         if a.report:
             a.report.write_text(text, encoding="utf-8")
         print(text)
+    elif a.cmd in ("paper-plan", "paper-settle"):
+        import pandas as pd
+        from . import paper, serve, supa
+        url, key = supa.env_config()
+        feat, races, _ = serve.load(config.SERVE_DIR)
+        if a.cmd == "paper-plan":
+            model = WinModel.load(config.SERVE_DIR / config.model_path("morning").name)
+            day = a.date or serve.today_jst()
+            rows = paper.plan_rows(feat, model, day, a.venues)
+            supa.upsert(url, key, "paper_plan", rows)
+            venues = sorted({r["venue"] for r in rows})
+            print(f"{day}: {', '.join(config.VENUES[v] for v in venues) or 'なし'} の {len(rows) // 6} レースを計画に書き込みました")
+        else:
+            recs = pd.DataFrame(supa.select(url, key, "paper_records", {
+                "select": "race_date,venue,race_no,lane,finish,win_payout", "win_payout": "is.null"}))
+            rows = paper.settle_rows(recs, feat, races)
+            supa.upsert(url, key, "paper_records", rows)
+            print(f"{len(rows) // 6} レースを精算しました（未精算 {len(recs) // 6 - len(rows) // 6} レース）")
     elif a.cmd == "predict":
         feat, _ = load_features()
         prerace = None

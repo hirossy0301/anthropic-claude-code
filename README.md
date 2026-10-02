@@ -107,7 +107,36 @@ Actions のキャッシュにある3年分のデータで実行します。結�
 
 画面では「単勝オッズと期待値」を開いてボタンを押すと、そのレースの単勝オッズを1回だけ取得して期待値を表示します。
 
-### EV 買いの記録（自宅 PC、お金は賭けない）
+### EV 買いの記録（Supabase、PC 不要・お金は賭けない）
+
+締切5分前の単勝オッズで期待値（朝のモデルの1着確率 × オッズ）を記録し、翌朝に実際の単勝払戻で精算します。アプリの **EV記録** ページで集計を見られます。
+
+```
+毎朝 GitHub Actions ─ paper-settle（前日分を精算）→ paper-plan（今日の4場の1着確率と締切時刻）→ Supabase
+Supabase pg_cron（毎分）→ Edge Function paper-odds（締切4〜6分前のレースだけオッズを1回取得）→ paper_records
+Streamlit アプリ（EV記録）← paper_records を読み取り専用で表示
+```
+
+初回の設定（画面の名前は Supabase の更新で変わることがあります）:
+
+1. https://supabase.com で **New project**（Free プラン、リージョンは Tokyo）を作る
+2. **SQL Editor** に `supabase/migrations/0001_paper.sql` を貼り付けて実行する（テーブル3つ・読み取り専用のポリシー・pg_cron / pg_net）
+3. **Edge Functions → Deploy a new function → Via Editor** で名前を `paper-odds` にし、`supabase/functions/paper-odds/index.ts` を貼り付けて Deploy する。関数の設定で **Verify JWT（JWT の検証）をオフ**にする（代わりに下の CRON_SECRET で確かめる）
+4. **Edge Functions → Secrets** に `CRON_SECRET`（長いランダムな文字列）を追加する
+5. `supabase/cron.sql` の `<PROJECT_REF>` と `<CRON_SECRET>` を置き換えて、SQL Editor で実行する（日本時間 8:00〜23:59 の毎分）
+6. GitHub の **Settings → Secrets and variables → Actions** に `SUPABASE_URL`（https://xxxx.supabase.co）と `SUPABASE_SECRET_KEY`（Project Settings → API Keys の secret key）を登録する
+7. Streamlit のアプリの **Settings → Secrets** に次を登録する（読み取り用の publishable key。secret key は入れない）
+   ```toml
+   SUPABASE_URL = "https://xxxx.supabase.co"
+   SUPABASE_ANON_KEY = "sb_publishable_..."
+   ```
+8. 確認: **Actions → daily-update → Run workflow** を実行し、「計画に書き込みました」と出ること。最初のレースの締切後に Table Editor の `paper_records` に行が増えること。定期実行の記録は `select * from cron.job_run_details order by start_time desc limit 20;`
+
+- 公式サイトへのアクセスは1日40〜50回（4場 × 12レース、1レース1回）です。
+- 毎朝6時17分の時点で番組表が出ていない場は、9時17分の更新で計画に入ります。それより前に締切があるモーニングレースは記録されないことがあります。
+- 止めるときは SQL Editor で `select cron.unschedule('paper-odds');` を実行します。
+
+### EV 買いの記録（自宅 PC で動かす場合）
 
 締切5分前の単勝オッズで期待値（朝のモデルの1着確率 × オッズ）を計算し、6艇分を `data/paper/日付.csv` に記録します。精算は実際の単勝払戻（締切時オッズ）で行うので、実際に買った場合と同じ条件です。
 
