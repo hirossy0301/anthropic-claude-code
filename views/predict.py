@@ -87,6 +87,8 @@ if mode == "prerace":
         st.session_state[f"wind_speed_{k}"] = int(0 if pd.isna(first["wind_speed"]) else first["wind_speed"])
         st.session_state[f"wave_{k}"] = int(0 if pd.isna(first["wave"]) else first["wave"])
         st.session_state[f"courses_{k}"] = ",".join(str(int(c)) for c in race_rows.sort_values("lane")["course"])
+        exh = race_rows.sort_values("lane")["exh_time"] if "exh_time" in race_rows else pd.Series(dtype=float)
+        st.session_state[f"exh_{k}"] = ",".join(f"{t:.2f}" for t in exh) if len(exh) and exh.notna().all() else ""
     if st.button("直前情報を取得（公式サイト）", help="このレースの直前情報ページを1回だけ取得し、風・波・スタート展示の進入を入れます"):
         try:
             bi = cached_beforeinfo(race_date, int(venue), int(race_no))
@@ -103,6 +105,8 @@ if mode == "prerace":
                     st.session_state[f"wave_{k}"] = int(round(bi["wave"]))
                 if bi["courses"]:
                     st.session_state[f"courses_{k}"] = ",".join(map(str, bi["courses"]))
+                if bi["exhibition_times"] and len(bi["exhibition_times"]) == 6:
+                    st.session_state[f"exh_{k}"] = ",".join(f"{bi['exhibition_times'][lane]:.2f}" for lane in range(1, 7))
                 st.session_state[f"before_{k}"] = bi
     bi = st.session_state.get(f"before_{k}")
     if bi:
@@ -115,13 +119,25 @@ if mode == "prerace":
     wind_speed = d2.number_input("風速 (m)", 0, 20, key=f"wind_speed_{k}")
     wave = d3.number_input("波高 (cm)", 0, 50, key=f"wave_{k}")
     courses_text = d4.text_input("進入コース（枠1〜6の順）", key=f"courses_{k}")
+    exh_text = st.text_input("展示タイム（枠1〜6の順、例: 6.82,6.85,6.83,6.74,6.82,6.77。空欄なら使わない）", key=f"exh_{k}")
     try:
         courses = [int(c) for c in courses_text.split(",")]
     except ValueError:
         st.error("進入コースは「1,2,3,4,5,6」のようにカンマ区切りの数字で入力してください。")
         st.stop()
+    exhibition_times = None
+    if exh_text.strip():
+        try:
+            values = [float(x) for x in exh_text.split(",")]
+            if len(values) != 6:
+                raise ValueError
+            exhibition_times = dict(zip(range(1, 7), values))
+        except ValueError:
+            st.error("展示タイムは「6.82,6.85,…」のように6艇分をカンマ区切りで入力してください。")
+            st.stop()
     prerace = {"wind_dir": None if wind_dir == "無風" else wind_dir,
-               "wind_speed": 0 if wind_dir == "無風" else wind_speed, "wave": wave, "courses": courses}
+               "wind_speed": 0 if wind_dir == "無風" else wind_speed, "wave": wave, "courses": courses,
+               "exhibition_times": exhibition_times}
 
 try:
     g, tri = predict_race(feat, cached_model(mode, _mtime(model_file(mode))), race_date, venue, race_no, prerace)

@@ -28,6 +28,10 @@ FEATURES_MORNING = FEATURES_V1 + [
 FEATURES_PRERACE = FEATURES_MORNING + [
     "venue", "course", "venue_course_win_actual", "wind_speed", "wind_sin", "wind_cos", "wave",
 ]
+# 展示タイム (展示航走のタイム。締切の15〜20分前に発表)。レース内の平均との差と順位も使う。
+# バックテストで効果を確かめてから FEATURE_SETS["prerace"] に入れる
+FEATURES_EXHIBITION = ["exh_time", "exh_diff", "exh_rank"]
+FEATURES_PRERACE_EXH = FEATURES_PRERACE + FEATURES_EXHIBITION
 FEATURE_SETS = {"morning": FEATURES_MORNING, "prerace": FEATURES_PRERACE}
 # 決まり手の予測に使う選手の傾向: (列名, 決まり手, 1コースの出走で数えるか, 事前分布の値)
 KIMARITE_HISTORY = [
@@ -105,6 +109,8 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df["course"] = df["course"].fillna(df["lane"])
     df["venue_course_win_actual"] = _prior_lookup(df, "course", "course", "win", prior=1 / 6, k=50)
 
+    _exhibition_features(df)
+
     # 選手の決まり手の傾向 (前日まで)。逃げ率は1コースのとき、差し・まくり・まくり差し率は2〜6コースのときの
     # 「その決まり手で勝った割合」。対象外のコースの出走は NaN にして数えない
     if "kimarite" not in df:
@@ -130,6 +136,18 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _exhibition_features(df: pd.DataFrame) -> None:
+    """展示タイムと、レース内の平均との差 (マイナスほど速い)・順位 (1 が最速)。展示タイムが無い艇は NaN。"""
+    if "exhibition_time" not in df:
+        df["exhibition_time"] = np.nan
+    t = pd.to_numeric(df["exhibition_time"], errors="coerce")
+    t = t.where(t > 0)
+    race = t.groupby([df[k] for k in RACE_KEYS])
+    df["exh_time"] = t
+    df["exh_diff"] = t - race.transform("mean")
+    df["exh_rank"] = race.rank(method="min")
+
+
 def training_rows(df: pd.DataFrame) -> pd.DataFrame:
     """結果が確定し、6艇そろって勝者が1艇だけのレースに絞る。"""
     done = df[df["win"].notna()]
@@ -140,7 +158,8 @@ def training_rows(df: pd.DataFrame) -> pd.DataFrame:
 
 def apply_prerace(g: pd.DataFrame, wind_dir: str | None = None, wind_speed: float | None = None,
                   wave: float | None = None, courses: list[int] | None = None,
-                  temperature: float | None = None) -> pd.DataFrame:
+                  temperature: float | None = None,
+                  exhibition_times: dict[int, float] | None = None) -> pd.DataFrame:
     """1レース分の特徴量に、直前情報 (風・波・進入コース・気温) を上書きする。
 
     courses は枠1〜6の順に並べた進入コース (例: 前付けで [1, 2, 4, 3, 5, 6])。
@@ -154,6 +173,9 @@ def apply_prerace(g: pd.DataFrame, wind_dir: str | None = None, wind_speed: floa
         g["wave"] = wave
     if temperature is not None:
         g["temperature"] = temperature
+    if exhibition_times:
+        g["exhibition_time"] = g["lane"].map(exhibition_times)
+        _exhibition_features(g)
     if courses is not None:
         if sorted(courses) != list(range(1, len(g) + 1)):
             raise ValueError(f"進入コースは 1〜{len(g)} を1回ずつ指定してください: {courses}")

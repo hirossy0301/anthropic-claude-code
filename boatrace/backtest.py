@@ -8,7 +8,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from .features import FEATURE_SETS, FEATURES_V1, RACE_KEYS, training_rows
+from .features import FEATURE_SETS, FEATURES_PRERACE_EXH, FEATURES_V1, RACE_KEYS, training_rows
 from .model import WinModel, trifecta_probs
 
 
@@ -90,6 +90,7 @@ SPECS = {
     "lgbm 直前": ("lgbm", FEATURE_SETS["prerace"], False),
     "lgbm 朝 較正": ("lgbm", FEATURE_SETS["morning"], True),
     "lgbm 直前 較正": ("lgbm", FEATURE_SETS["prerace"], True),
+    "lgbm 直前+展示 較正": ("lgbm", FEATURES_PRERACE_EXH, True),
 }
 
 
@@ -153,7 +154,8 @@ def report(feat: pd.DataFrame, races: pd.DataFrame, cutoff: str, top_n: int = 5)
     ]
     rows = []
     for a, b in [("lgbm 初版(v1)", "lgbm 朝"), ("lgbm 朝", "lgbm 直前"), ("logreg 朝", "lgbm 朝"),
-                 ("lgbm 朝", "lgbm 朝 較正"), ("lgbm 直前", "lgbm 直前 較正")]:
+                 ("lgbm 朝", "lgbm 朝 較正"), ("lgbm 直前", "lgbm 直前 較正"),
+                 ("lgbm 直前 較正", "lgbm 直前+展示 較正")]:
         d = paired_difference(records[a], records[b])
         rows.append({"比較": f"{b} − {a}",
                      "1着的中率の差": "{:+.2%} [{:+.2%}, {:+.2%}]".format(*d["win_accuracy"]),
@@ -174,7 +176,7 @@ def report(feat: pd.DataFrame, races: pd.DataFrame, cutoff: str, top_n: int = 5)
             _md(quarterly(records["lgbm 朝 較正"]),
                 {"レース数": "{:,.0f}", "1着的中率": "{:.1%}", "3連単的中率": "{:.1%}", "回収率": "{:.1%}"}), ""]
 
-    for name in ("lgbm 朝", "lgbm 直前"):
+    for name in ("lgbm 朝", "lgbm 直前", "lgbm 直前+展示 較正"):
         est = models[name].estimator
         imp = (pd.Series(est.booster_.feature_importance("gain"), index=models[name].features)
                .sort_values(ascending=False))

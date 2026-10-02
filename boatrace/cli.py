@@ -109,6 +109,7 @@ def main(argv=None) -> None:
     s.add_argument("--wave", type=float, help="波高 cm")
     s.add_argument("--courses", help="枠1〜6の進入コース (例: 1,2,4,3,5,6)")
     s.add_argument("--temperature", type=float, help="気温 (未取得のときの上書き)")
+    s.add_argument("--exhibition", help="枠1〜6の展示タイム (例: 6.82,6.85,6.83,6.74,6.82,6.77)")
     a = p.parse_args(argv)
 
     if a.cmd == "download":
@@ -215,7 +216,9 @@ def main(argv=None) -> None:
         if a.mode == "prerace":
             prerace = {"wind_dir": a.wind_dir, "wind_speed": a.wind_speed, "wave": a.wave,
                        "temperature": a.temperature,
-                       "courses": [int(c) for c in a.courses.split(",")] if a.courses else None}
+                       "courses": [int(c) for c in a.courses.split(",")] if a.courses else None,
+                       "exhibition_times": (dict(zip(range(1, 7), map(float, a.exhibition.split(","))))
+                                            if a.exhibition else None)}
         elif a.temperature is not None:
             prerace = {"temperature": a.temperature}
         model = WinModel.load(config.model_path(a.mode))

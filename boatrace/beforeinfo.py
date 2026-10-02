@@ -1,4 +1,4 @@
-"""公式サイトの直前情報 (風・波・気温・スタート展示の進入) の取得。
+"""公式サイトの直前情報 (展示タイム・風・波・気温・スタート展示の進入) の取得。
 
 アプリのボタンを押したときだけ、そのレースの1ページを取得する (公式サイトのポリシーは私的使用に限るため)。
 
@@ -46,7 +46,8 @@ def parse_beforeinfo(html: str) -> dict:
     6艇そろっていないとき (欠場など) は None。
     """
     out: dict = {"updated": None, "wind_dir": None, "wind_speed": None, "wave": None,
-                 "temperature": None, "water_temperature": None, "courses": None, "exhibition_st": None}
+                 "temperature": None, "water_temperature": None, "courses": None, "exhibition_st": None,
+                 "exhibition_times": None}
     if m := re.search(r"水面気象情報\s*([^<]*?)\s*</p>", html):
         out["updated"] = m.group(1).replace("　", " ").strip()
     wind = re.search(r'weather1_bodyUnitImage is-wind(\d+)"', html)
@@ -59,6 +60,15 @@ def parse_beforeinfo(html: str) -> dict:
     out["wave"] = _number(_label(html, "波高"))
     out["temperature"] = _number(_label(html, "気温"))
     out["water_temperature"] = _number(_label(html, "水温"))
+
+    # 出走表の展示タイム: 枠番のセルの後、選手名・体重の次の列 (欠場などで空欄の艇は入れない)
+    times = {}
+    for lane, value in re.findall(
+            r'is-boatColor([1-6]) is-fs14" rowspan="4">\s*\d\s*</td>.*?kg</td>\s*<td rowspan="4">\s*([^<]*?)\s*</td>',
+            html, re.S):
+        if re.fullmatch(r"\d+\.\d+", value):
+            times[int(lane)] = float(value)
+    out["exhibition_times"] = times or None
 
     # スタート展示: 上の行から 1コース, 2コース, … の順に、その艇の枠番が並ぶ
     start = html.find("スタート展示")

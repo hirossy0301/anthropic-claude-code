@@ -39,3 +39,19 @@ def test_parse_beforeinfo_entry_change_and_missing():
     assert parse_beforeinfo(html.replace('is-type6">6<', 'is-type5">5<'))["courses"] is None  # 6艇そろわない
     empty = parse_beforeinfo("<html>データはありません</html>")
     assert empty["wind_speed"] is None and empty["courses"] is None
+
+
+def test_exhibition_times_and_features(tmp_path):
+    a = parse_beforeinfo((FIX / "beforeinfo_20260928_19_12.html").read_text(encoding="utf-8"))
+    # 競走成績ファイルの展示タイムと一致 (2026-09-28 下関 12R)
+    assert a["exhibition_times"] == {1: 6.82, 2: 6.85, 3: 6.83, 4: 6.74, 5: 6.82, 6: 6.77}
+
+    from test_pipeline import _feat
+    from boatrace.features import apply_prerace
+    _, feat = _feat(tmp_path, 5)
+    assert feat["exh_time"].notna().all() and feat["exh_rank"].between(1, 6).all()
+    g = feat[(feat["race_date"] == "2026-01-05") & (feat["venue"] == 1) & (feat["race_no"] == 1)]
+    g2 = apply_prerace(g, exhibition_times=a["exhibition_times"])
+    assert g2["exh_time"].tolist() == [6.82, 6.85, 6.83, 6.74, 6.82, 6.77]
+    assert g2["exh_rank"].tolist() == [3, 6, 5, 1, 3, 2]
+    assert g2["exh_diff"].sum() == pytest.approx(0)

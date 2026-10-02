@@ -3,5 +3,5 @@
 # suite: win (1着・3連単) / kimarite (決まり手) / all
 cutoff=2025-10-01
 top_n=5
-suite=kimarite
-# 2026-10-02: 決まり手 (1マークの展開) のモデルを確認
+suite=win
+# 2026-10-02: 展示タイムを加えた直前の予想 (lgbm 直前+展示 較正) を確認
