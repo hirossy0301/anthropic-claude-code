@@ -49,6 +49,12 @@ alter table public.paper_plan enable row level security;
 alter table public.paper_attempts enable row level security;
 alter table public.paper_records enable row level security;
 
+-- 「Automatically expose new tables」をオフにしたプロジェクトでも使えるよう、権限を明示する
+-- 書き込み: service_role (Edge Function と GitHub Actions の secret key)。読み取り: anon / authenticated (アプリ)
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update on public.paper_plan, public.paper_attempts, public.paper_records to service_role;
+grant select on public.paper_plan, public.paper_records to anon, authenticated;
+
 drop policy if exists paper_plan_read on public.paper_plan;
 create policy paper_plan_read on public.paper_plan for select to anon, authenticated using (true);
 drop policy if exists paper_records_read on public.paper_records;
