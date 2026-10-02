@@ -14,9 +14,10 @@ SERVE_DIR = Path(os.environ.get("BOATRACE_SERVE_DIR", ROOT / "serve"))
 
 
 # モデルの作り方を変えたら上げる。serve/model_version.txt と違えば daily-update が再学習する
-MODEL_VERSION = 1
-# 枠ごとの確率の較正を本番の学習で使うか。3年分のバックテストで改善を確認してから True にする
-CALIBRATE = False
+MODEL_VERSION = 2  # 2: 枠ごとの確率の較正を導入
+# 枠ごとの確率の較正を本番の学習で使うか。3年分のバックテスト (直近1年 54,339 レース) で
+# 対数損失 -0.0039 [95%CI -0.0047, -0.0031]、1着的中率 +0.26% の改善を確認して有効にした
+CALIBRATE = True
 
 
 def model_path(mode: str) -> Path:

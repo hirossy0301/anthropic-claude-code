@@ -68,12 +68,14 @@ python -m venv .venv
 
 ## デプロイ（Streamlit Community Cloud）
 
-GitHub Actions（`.github/workflows/daily-update`）が毎朝 06:30 / 09:30（日本時間）に次を自動実行し、`serve/` をコミットします。
+GitHub Actions（`.github/workflows/daily-update`）が毎朝 06:17 / 09:17（日本時間）に次を自動実行し、`serve/` をコミットします。
 
 1. 前日までの DB を Actions のキャッシュから復元（無い場合は3年分を取り直す。約3時間）
 2. 前日の成績・当日と翌日の番組表・気温を取り込む（未確定の成績は保存せず、次回取り直す）
 3. 直近8日分＋当日の特徴量を `serve/features.parquet` に書き出す
-4. 月曜朝・初回・手動指定のときはモデルを再学習して `serve/model_*.pkl` に保存する
+4. 月曜朝・初回・手動指定・モデルの作り方を変えたとき（`MODEL_VERSION` が上がったとき）は、モデルを再学習して `serve/model_*.pkl` に保存する
+
+GitHub の定期実行は遅れたり飛ばされたりすることがあります。データが古いままのときは、**Actions → daily-update → Run workflow** で手動実行してください。
 
 アプリは `serve/` があればそれだけを読みます（3年分の再計算をしないので、無料枠のメモリで動きます）。
 

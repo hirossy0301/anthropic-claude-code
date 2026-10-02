@@ -5,8 +5,9 @@ name: daily-update
 
 on:
   schedule:
-    - cron: "30 21 * * *"  # 毎日 06:30 JST
-    - cron: "30 0 * * *"   # 毎日 09:30 JST (朝の時点で番組表が未公開だった場合の取り直し)
+    # 毎時0分・30分は GitHub の定期実行が混んで遅延・取りこぼしが起きやすいので避ける
+    - cron: "17 21 * * *"  # 毎日 06:17 JST
+    - cron: "17 0 * * *"   # 毎日 09:17 JST (朝の時点で番組表が未公開だった場合の取り直し)
   workflow_dispatch:
     inputs:
       retrain:
@@ -61,9 +62,9 @@ jobs:
           REQUESTED: ${{ inputs.retrain == true }}
           EVENT_SCHEDULE: ${{ github.event.schedule }}
         run: |
-          # 月曜 06:30 JST の回 (UTC では日曜 21:30) に週1回再学習する
+          # 月曜 06:17 JST の回 (UTC では日曜 21:17) に週1回再学習する
           WEEKLY=false
-          if [ "$EVENT_SCHEDULE" = "30 21 * * *" ] && [ "$(date -u +%u)" = "7" ]; then WEEKLY=true; fi
+          if [ "$EVENT_SCHEDULE" = "17 21 * * *" ] && [ "$(date -u +%u)" = "7" ]; then WEEKLY=true; fi
           # モデルの作り方が変わった (serve/model_version.txt がコードの MODEL_VERSION と違う) ときも再学習する
           CODE_VERSION=$(python -c "from boatrace import config; print(config.MODEL_VERSION)")
           SERVED_VERSION=$(cat serve/model_version.txt 2>/dev/null || echo none)
