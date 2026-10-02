@@ -11,6 +11,8 @@
                                                  直前の予想 (直前情報を入力)
   export --days 8                                デプロイ用に直近の特徴量を serve/ に書き出し
   daily                                          毎朝の更新 (直近の取得→取り込み→気温→書き出し)
+  odds-fetch --cutoff 2025-10-01 --sample 2000   検証期間から無作為に選んだレースの締切時単勝オッズを取得
+  ev-backtest --cutoff 2025-10-01                取得済みオッズで、単勝の期待値で買うバックテスト
 """
 from __future__ import annotations
 
@@ -67,6 +69,14 @@ def main(argv=None) -> None:
     s = sub.add_parser("daily")
     s.add_argument("--date", type=date.fromisoformat, help="基準日 (省略時は日本時間の今日)")
     s.add_argument("--days", type=int, default=8)
+    s = sub.add_parser("odds-fetch")
+    s.add_argument("--cutoff", required=True, help="この日以降の確定済みレースから抽出する")
+    s.add_argument("--sample", type=int, default=2000, help="抽出するレース数")
+    s.add_argument("--seed", type=int, default=0, help="同じ値なら同じ抽出 (途中から再開できる)")
+    s.add_argument("--budget-minutes", type=float, default=270, help="取得に使う時間の上限 (分)")
+    s = sub.add_parser("ev-backtest")
+    s.add_argument("--cutoff", required=True)
+    s.add_argument("--report", type=Path, help="Markdown で保存")
     s = sub.add_parser("predict")
     s.add_argument("--date", required=True)
     s.add_argument("--venue", type=int, required=True)
@@ -125,6 +135,19 @@ def main(argv=None) -> None:
         fetch_temperatures(conn, today - timedelta(days=2), today + timedelta(days=1))
         feat, races = load_features()
         print(export(feat, races, config.SERVE_DIR, a.days, today=today))
+    elif a.cmd == "odds-fetch":
+        from .odds import fetch_sample, sample_races
+        keys = sample_races(db.load_races(db.connect()), a.cutoff, a.sample, a.seed)
+        print(f"{len(keys)} レースを抽出 (cutoff {a.cutoff}, seed {a.seed})")
+        print(fetch_sample(keys, a.budget_minutes))
+    elif a.cmd == "ev-backtest":
+        from .ev import report
+        from .odds import load_cached
+        feat, races = load_features()
+        text = report(feat, races, load_cached(), a.cutoff)
+        if a.report:
+            a.report.write_text(text, encoding="utf-8")
+        print(text)
     elif a.cmd == "predict":
         feat, _ = load_features()
         prerace = None

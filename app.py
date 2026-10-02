@@ -117,4 +117,40 @@ with right:
         st.info(f"結果: {res['trifecta']} (払戻 {int(res['trifecta_payout']):,}円)"
                 + (f" / 予想順位 {rank[0] + 1}位" if len(rank) else ""))
 
+
+
+@st.cache_data(ttl=60, show_spinner="公式サイトからオッズを取得中…")
+def cached_win_odds(race_date: str, venue: int, race_no: int) -> dict:
+    """同じレースは60秒以内なら取り直さない (公式サイトへのアクセスを減らすため)。"""
+    from boatrace.odds import fetch_win_odds
+    return fetch_win_odds(race_date, venue, race_no)
+
+
+with st.expander("単勝オッズと期待値（公式サイトから取得）"):
+    st.caption("ボタンを押したときだけ、このレースの単勝オッズを公式サイトから1回取得します。"
+               "期待値 = 1着確率 × オッズ（1を超えると、確率が正しければ長期的に得）。"
+               "公式サイトの情報は私的使用に限られるため、取得したオッズを他の人に配ったり転載したりしないでください。")
+    if st.button("単勝オッズを取得"):
+        try:
+            rec = cached_win_odds(race_date, int(venue), int(race_no))
+        except Exception as e:
+            st.error(f"オッズを取得できませんでした: {e}")
+        else:
+            win = {int(k): v for k, v in rec["win"].items()}
+            if not win:
+                st.warning("オッズがまだ発表されていないか、このレースのオッズがありません。")
+            else:
+                ev = g[["lane", "racer_name", "win_prob"]].copy()
+                ev["odds"] = ev["lane"].map(win)
+                inv = 1 / ev["odds"]
+                ev["market"] = inv / inv.sum()
+                ev["ev"] = ev["win_prob"] * ev["odds"]
+                st.write("締切時オッズ（確定）" if rec["final"] else "締切前のオッズ（締切まで変わります）")
+                st.dataframe(ev.rename(columns={"lane": "枠", "racer_name": "選手", "win_prob": "1着確率",
+                                                "odds": "単勝オッズ", "market": "オッズから見た確率", "ev": "期待値"})
+                             .style.format({"1着確率": "{:.1%}", "単勝オッズ": "{:.1f}", "オッズから見た確率": "{:.1%}",
+                                            "期待値": "{:.2f}"}, na_rep="-"), hide_index=True)
+                st.caption("バックテストでは、締切時オッズでもこの期待値で買って控除率（約25%）を上回れるかは確かめられていません。"
+                           "1を超えた艇があっても、利益を保証するものではありません。")
+
 st.caption("確率は過去データからの統計的推定であり、的中や利益を保証するものではありません。")

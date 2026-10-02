@@ -11,6 +11,8 @@ DB_PATH = DATA_DIR / "boatrace.db"
 MODEL_DIR = DATA_DIR
 # デプロイ用の軽量データ (直近の特徴量とモデル)。GitHub Actions が毎朝更新してコミットする
 SERVE_DIR = Path(os.environ.get("BOATRACE_SERVE_DIR", ROOT / "serve"))
+# 取得済みの単勝オッズ (締切時) のキャッシュ。1レース1ファイルの JSON
+ODDS_DIR = Path(os.environ.get("BOATRACE_ODDS_DIR", DATA_DIR / "odds"))
 
 
 # モデルの作り方を変えたら上げる。serve/model_version.txt と違えば daily-update が再学習する
