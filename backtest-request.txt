@@ -1,5 +1,7 @@
 # このファイルを変更して push すると、GitHub Actions の backtest が実行される。
 # cutoff より前の日で学習し、cutoff 以降で検証する。top_n は3連単の買い目の点数。
+# suite: win (1着・3連単) / kimarite (決まり手) / all
 cutoff=2025-10-01
 top_n=5
-# 2026-10-02: 枠ごとの較正の効果を確認
+suite=kimarite
+# 2026-10-02: 決まり手 (1マークの展開) のモデルを確認

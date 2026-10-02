@@ -12,10 +12,10 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from .features import FEATURE_SETS, RACE_KEYS
+from .features import FEATURE_SETS, KIMARITE_HISTORY, RACE_KEYS
 
 JST = ZoneInfo("Asia/Tokyo")
-DISPLAY_COLUMNS = ["racer_id", "racer_name", "racer_class", "deadline", "finish", "wind_dir"]
+DISPLAY_COLUMNS = ["racer_id", "racer_name", "racer_class", "deadline", "finish", "wind_dir", "kimarite"]
 
 
 def today_jst() -> date:
@@ -27,7 +27,7 @@ def export(feat: pd.DataFrame, races: pd.DataFrame, out_dir: Path, days: int,
     """today の days 日前以降 (未来の出走表を含む) の特徴量とレース結果を書き出す。"""
     today = today or today_jst()
     start = (today - timedelta(days=days)).isoformat()
-    features = sorted({c for cols in FEATURE_SETS.values() for c in cols})
+    features = sorted({c for cols in FEATURE_SETS.values() for c in cols} | {c for c, *_ in KIMARITE_HISTORY})
     cols = list(dict.fromkeys(RACE_KEYS + ["lane"] + DISPLAY_COLUMNS + features))
     f = feat.loc[feat["race_date"] >= start, cols]
     r = races[races["race_date"] >= start]

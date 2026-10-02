@@ -18,10 +18,12 @@
 | `boatrace/features.py` | 特徴量。履歴系は **前日までのデータのみ** で計算（リーク防止） |
 | `boatrace/model.py` | 1着の二値分類 → レース内で正規化。3連単は Plackett-Luce で計算。朝用・直前用の2モデル |
 | `boatrace/backtest.py` | 時系列分割で評価（1着的中率・対数損失・3連単上位N点の的中率/回収率） |
+| `boatrace/kimarite.py` | 1マークの展開予想（決まり手）。1着確率 × 勝ったときの決まり手の確率 |
 | `boatrace/odds.py` | 公式サイトの単勝オッズ（締切時）の取得・解析・キャッシュ |
 | `boatrace/ev.py` | 単勝の期待値（確率×オッズ）で買うバックテスト、モデルと市場の確率の比較 |
 | `boatrace/synthetic.py` | 動作確認用の **合成データ**（実データではない） |
-| `app.py` | Streamlit 画面 |
+| `app.py` | Streamlit 画面の入口（上部メニューで「予想」と「予測の仕組み」を切り替え） |
+| `views/predict.py` / `views/method.py` | 予想の画面 / 予測の仕組みの説明 |
 
 ## 使い方
 
@@ -93,7 +95,7 @@ GitHub の定期実行は遅れたり飛ばされたりすることがありま�
 Actions のキャッシュにある3年分のデータで実行します。結果は実行ページの **Summary** に出ます（全体の指標、要因を追加した効果の95%信頼区間、較正、四半期ごとの回収率、特徴量の寄与）。
 
 - Actions の画面で **backtest → Run workflow**、または
-- `backtest-request.txt` の `cutoff` / `top_n` を書き換えて push する
+- `backtest-request.txt` の `cutoff` / `top_n` / `suite`（`win` 1着・3連単 / `kimarite` 決まり手 / `all`）を書き換えて push する
 
 ### 単勝の期待値バックテスト
 

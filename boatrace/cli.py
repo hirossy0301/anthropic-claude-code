@@ -5,6 +5,7 @@
   demo-data --days 120                           合成データを data/raw に生成 (動作確認用)
   weather --start 2023-10-01 --end 2026-09-30    場ごとの気温を取得 (Open-Meteo)
   backtest --cutoff 2026-01-01                   時系列バックテスト
+  kimarite-backtest --cutoff 2026-01-01          決まり手 (1マークの展開) のバックテスト
   train                                          全期間で学習 (朝用・直前用の2モデル)
   predict --date 2026-09-29 --venue 12 --race 1  朝の予想
   predict ... --mode prerace --wind-dir 北西 --wind-speed 3 --wave 2 --courses 1,2,3,4,5,6
@@ -28,8 +29,14 @@ from .features import FEATURE_SETS, RACE_KEYS, apply_prerace, build_features, tr
 from .model import WinModel, trifecta_probs
 
 
+KIMARITE_MODEL = "model_kimarite.pkl"
+
+
 def load_features():
     conn = db.connect()
+    if db.needs_reingest(conn):  # 決まり手の列を追加する前に取り込んだ成績を、保存済みのテキストから読み直す
+        print("決まり手を取り込むため、保存済みの成績を読み直します")
+        db.ingest_dir(conn, log=lambda *_: None)
     return build_features(db.load_frame(conn)), db.load_races(conn)
 
 
@@ -62,6 +69,9 @@ def main(argv=None) -> None:
     s.add_argument("--cutoff", required=True)
     s.add_argument("--top-n", type=int, default=5)
     s.add_argument("--report", type=Path, help="詳細 (信頼区間・較正・四半期・特徴量の寄与) を Markdown で保存")
+    s = sub.add_parser("kimarite-backtest")
+    s.add_argument("--cutoff", required=True)
+    s.add_argument("--report", type=Path, help="Markdown で保存")
     s = sub.add_parser("train")
     s.add_argument("--out-dir", type=Path, default=config.MODEL_DIR, help="モデルの保存先 (デプロイ用は serve)")
     s = sub.add_parser("export")
@@ -118,7 +128,17 @@ def main(argv=None) -> None:
             model = WinModel(features=list(features), calibrate=config.CALIBRATE).fit(rows)
             model.save(out)
             print(f"{mode}: {rows.groupby(RACE_KEYS).ngroups} レースで学習 (較正 alpha={[round(float(x), 3) for x in np.atleast_1d(model.calib_alpha)]}) -> {out}")
+        from .kimarite import KimariteModel
+        KimariteModel().fit(rows).save(a.out_dir / KIMARITE_MODEL)
+        print(f"決まり手 -> {a.out_dir / KIMARITE_MODEL}")
         (a.out_dir / "model_version.txt").write_text(f"{config.MODEL_VERSION}\n", encoding="utf-8")
+    elif a.cmd == "kimarite-backtest":
+        from .kimarite import report
+        feat, _ = load_features()
+        text = report(feat, a.cutoff)
+        if a.report:
+            a.report.write_text(text, encoding="utf-8")
+        print(text)
     elif a.cmd == "export":
         from .serve import export
         feat, races = load_features()

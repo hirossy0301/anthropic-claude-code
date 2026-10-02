@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS results (
 CREATE TABLE IF NOT EXISTS races (
     race_date TEXT, venue INTEGER, race_no INTEGER, race_name TEXT, distance INTEGER,
     trifecta TEXT, trifecta_payout INTEGER, win_payout INTEGER,
-    wind_dir TEXT, wind_speed INTEGER, wave INTEGER,
+    wind_dir TEXT, wind_speed INTEGER, wave INTEGER, kimarite TEXT,
     PRIMARY KEY (race_date, venue, race_no)
 );
 CREATE TABLE IF NOT EXISTS weather (
@@ -38,7 +38,7 @@ CREATE TABLE IF NOT EXISTS weather (
 """
 
 # 既存 DB に後から追加した列 (table, column, type)
-MIGRATIONS = [("entries", "deadline", "TEXT")]
+MIGRATIONS = [("entries", "deadline", "TEXT"), ("races", "kimarite", "TEXT")]
 
 
 def connect(path: Path = config.DB_PATH) -> sqlite3.Connection:
@@ -90,7 +90,7 @@ def load_frame(conn: sqlite3.Connection) -> pd.DataFrame:
         """
         SELECT e.*, r.finish, r.finish_code, r.exhibition_time, r.course,
                r.start_timing, r.flying,
-               ra.wind_dir, ra.wind_speed, ra.wave, w.temperature
+               ra.wind_dir, ra.wind_speed, ra.wave, ra.kimarite, w.temperature
         FROM entries e
         LEFT JOIN results r USING (race_date, venue, race_no, lane)
         LEFT JOIN races ra USING (race_date, venue, race_no)
@@ -100,6 +100,12 @@ def load_frame(conn: sqlite3.Connection) -> pd.DataFrame:
         """,
         conn,
     )
+
+
+def needs_reingest(conn: sqlite3.Connection) -> bool:
+    """決まり手の列を追加する前に取り込んだ成績が残っているか (確定済みなのに決まり手が空のレースが多い)。"""
+    n = conn.execute("SELECT COUNT(*) FROM races WHERE win_payout IS NOT NULL AND kimarite IS NULL").fetchone()[0]
+    return n > 100
 
 
 def load_races(conn: sqlite3.Connection) -> pd.DataFrame:

@@ -33,6 +33,20 @@ def _racers(rng: np.random.Generator, n: int = 400) -> list[dict]:
     return racers
 
 
+def _kimarite(rng: np.random.Generator, entries: list, winner: int) -> str:
+    """勝った艇の進入コースとスタートから決まり手を決める。
+
+    1コースの勝ちはほぼ逃げ。外のコースは、内側の艇よりスタートが速いほどまくり、遅いほど差しになりやすい。
+    """
+    course = entries[winner][5]
+    if course == 1:
+        return "逃げ" if rng.random() < 0.93 else "抜き"
+    inner = [e for e in entries if e[5] == course - 1]
+    st_gap = (inner[0][3] - entries[winner][3]) if inner else 0.0  # 正なら内側より速い
+    w = np.exp(np.array([-12 * st_gap, 15 * st_gap, 0.0, -1.0]))  # 差し / まくり / まくり差し / 抜き
+    return str(rng.choice(["差し", "まくり", "まくり差し", "抜き"], p=w / w.sum()))
+
+
 def generate(out_dir: Path, start: date, days: int, venues=(1, 2, 12, 24), seed: int = 0) -> None:
     rng = np.random.default_rng(seed)
     racers = _racers(rng)
@@ -77,8 +91,9 @@ def generate(out_dir: Path, start: date, days: int, venues=(1, 2, 12, 24), seed:
                 # Plackett-Luce に従う着順: 強さ + ガンベル乱数 の降順
                 noise = rng.gumbel(size=6)
                 order = np.argsort(-(np.array([e[4] for e in entries]) + noise))
+                kimarite = _kimarite(rng, entries, order[0])
                 k += [f"   {r}R       予選                 H1800m  晴　  風  {wind_dir}　 {wind_speed}m  波　  {wind_speed}cm",
-                      "  着 艇 登番 　選　手　名　　ﾓｰﾀｰ ﾎﾞｰﾄ 展示 進入 ｽﾀｰﾄﾀｲﾐﾝｸ ﾚｰｽﾀｲﾑ", "-" * 79]
+                      f"  着 艇 登番 　選　手　名　　ﾓｰﾀｰ ﾎﾞｰﾄ 展示 進入 ｽﾀｰﾄﾀｲﾐﾝｸ ﾚｰｽﾀｲﾑ {kimarite}　　　", "-" * 79]
                 for pos, i in enumerate(order, start=1):
                     lane, rc, mno, st, _, course = entries[i]
                     name = "　".join(rc["name"])

@@ -29,6 +29,13 @@ FEATURES_PRERACE = FEATURES_MORNING + [
     "venue", "course", "venue_course_win_actual", "wind_speed", "wind_sin", "wind_cos", "wave",
 ]
 FEATURE_SETS = {"morning": FEATURES_MORNING, "prerace": FEATURES_PRERACE}
+# 決まり手の予測に使う選手の傾向: (列名, 決まり手, 1コースの出走で数えるか, 事前分布の値)
+KIMARITE_HISTORY = [
+    ("racer_nige_rate", "逃げ", True, 0.5),
+    ("racer_sashi_rate", "差し", False, 0.03),
+    ("racer_makuri_rate", "まくり", False, 0.03),
+    ("racer_makurizashi_rate", "まくり差し", False, 0.03),
+]
 FEATURES = FEATURES_MORNING
 
 
@@ -97,6 +104,16 @@ def build_features(df: pd.DataFrame) -> pd.DataFrame:
     df["venue_course_win"] = _prior_lookup(df, "course", "lane", "win", prior=1 / 6, k=50)
     df["course"] = df["course"].fillna(df["lane"])
     df["venue_course_win_actual"] = _prior_lookup(df, "course", "course", "win", prior=1 / 6, k=50)
+
+    # 選手の決まり手の傾向 (前日まで)。逃げ率は1コースのとき、差し・まくり・まくり差し率は2〜6コースのときの
+    # 「その決まり手で勝った割合」。対象外のコースの出走は NaN にして数えない
+    if "kimarite" not in df:
+        df["kimarite"] = None
+    won = df["win"] == 1
+    in1 = df["course"] == 1
+    for col, kind, inside, prior in KIMARITE_HISTORY:
+        hit = (won & (df["kimarite"] == kind)).astype(float).where(df["win"].notna())
+        df[col] = _prior_rate(df.assign(_v=hit.where(in1 if inside else ~in1)), ["racer_id"], "_v", prior=prior, k=10)
 
     # 水面: 淡水は浮力が小さく体重の影響が出やすいので、体重差との組み合わせも作る
     info = df["venue"].map(VENUE_INFO)

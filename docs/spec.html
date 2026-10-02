@@ -168,7 +168,8 @@ pip install -r requirements.txt</code></pre>
     <tr><td><code>weather</code></td><td>場ごとに1時間ごとの気温を Open-Meteo から取得します。過去分は archive API、直近6日以降は予報 API を使います。</td><td><code>--start 2023-10-01 --end 2026-09-30</code></td></tr>
     <tr><td><code>demo-data</code></td><td>動作確認用の合成データを生成します（実データではありません）。</td><td><code>--days 180</code></td></tr>
     <tr><td><code>backtest</code></td><td>指定日より前で学習し、指定日以降で評価します。</td><td><code>--cutoff 2026-04-01 --top-n 5</code></td></tr>
-    <tr><td><code>train</code></td><td>全期間で学習し、朝用 <code>data/model_morning.pkl</code> と直前用 <code>data/model_prerace.pkl</code> を保存します。</td><td>引数なし</td></tr>
+    <tr><td><code>kimarite-backtest</code></td><td>決まり手（1マークの展開）のモデルを、場×コースの決まり手の割合と比べて評価します。</td><td><code>--cutoff 2025-10-01 --report kimarite.md</code></td></tr>
+    <tr><td><code>train</code></td><td>全期間で学習し、朝用 <code>data/model_morning.pkl</code>・直前用 <code>data/model_prerace.pkl</code>・決まり手用 <code>data/model_kimarite.pkl</code> を保存します。</td><td>引数なし</td></tr>
     <tr><td><code>odds-fetch</code></td><td>検証期間の確定済みレースから無作為に選んだレースの締切時単勝オッズを、公式サイトから1本ずつ（3秒以上あけて）取得します。取得済みはキャッシュから再利用し、時間の上限で止まります。</td><td><code>--cutoff 2025-10-01 --sample 2000 --budget-minutes 270</code></td></tr>
     <tr><td><code>ev-backtest</code></td><td>取得済みの単勝オッズで、期待値（確率×オッズ）で買った場合の回収率と、モデルと市場の確率の比較を出します。</td><td><code>--cutoff 2025-10-01 --report ev.md</code></td></tr>
     <tr><td><code>predict</code></td><td>1レース分の予想を表示します（初期値は朝の予想）。</td><td><code>--date 2026-09-29 --venue 12 --race 1</code></td></tr>
@@ -192,6 +193,7 @@ python -m boatrace.cli weather --start 2026-09-30 --end 2026-09-30</code></pre>
 
 <h3>画面（Streamlit）</h3>
 <ul>
+  <li>画面上部のメニューで「予想」と「予測の仕組み」（このページの要約）を切り替えます。</li>
   <li>日付・場・レースを選ぶと、各艇の1着確率（表と棒グラフ）と3連単の上位が表示されます。</li>
   <li>画面上部で「朝の予想」と「直前の予想」を切り替えます。直前の予想では、風向・風速・波高・進入コースを入力します。確定済みのレースには、実際の値が最初から入っています。</li>
   <li>レースごとに、水面の種類・締切予定時刻・気温も表示されます。</li>
@@ -334,6 +336,16 @@ python -m boatrace.cli weather --start 2026-09-30 --end 2026-09-30</code></pre>
 </table></div>
 <div class="formula">P(1-2-3) = 0.50 × 0.20 ÷ 0.50 × 0.10 ÷ 0.30 = 0.50 × 0.40 × 0.333 ≈ 0.067（6.7%）</div>
 <p>120通りの確率を合計すると1になります（テストで確認済み）。</p>
+
+<h3>1マークの展開予想（決まり手）</h3>
+<p>公式データには<b>1マーク通過時の順位が記録されていません</b>。そこで、競走成績の見出し行に記録されている<b>決まり手</b>（逃げ・差し・まくり・まくり差し・抜き・恵まれ）で1マークの展開を表します。逃げ・差し・まくり・まくり差しは1マークで勝負が決まった（勝った艇が1マークで先頭に立った）ことを、抜き・恵まれは1マークの後で先頭が変わったことを表します。実データ60日分（9,404レース）では、逃げ 52%、まくり 15%、差し 13%、まくり差し 12%、抜き 7%、恵まれ 0.8% でした。</p>
+<p class="formula">P(艇 i が決まり手 k で勝つ) = P(艇 i が1着) × P(決まり手 k ｜ 艇 i が1着)</p>
+<ul>
+  <li><b>後ろの確率：</b>勝った艇の行だけで、決まり手を LightGBM の多クラス分類で学習します（木200本、学習率0.03、葉15、葉の最小件数200）。正則化を弱くすると、比較用の「場×コースの割合」より悪くなりました。</li>
+  <li><b>特徴量：</b>進入コース、場・水面・風・波、その艇の平均ST・勝率・級別・モーター、1コースの艇の平均ST・勝率・逃げ率、1つ内側と外側の艇の平均ST、内側とのSTの差。選手の過去の決まり手の割合（1コースでの逃げ率、2〜6コースでの差し率・まくり率・まくり差し率、前日まで）。</li>
+  <li><b>前後の艇の情報</b>は進入コースで引くので、直前の予想で進入コースを変えると計算し直します。</li>
+  <li><b>本番への導入：</b>3年分のバックテストで比較用より良いことを確かめてから、<code>MODEL_VERSION</code> を上げて入れます。</li>
+</ul>
 
 <h2 id="eval"><span class="num">8</span>評価方法</h2>
 <p><strong>時系列分割</strong>で評価します。<code>--cutoff</code> より前の期間で学習し、それ以降の期間で検証します。ランダムに分割すると、未来のレースで学習してしまうため使いません。</p>

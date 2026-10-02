@@ -30,6 +30,9 @@ WIN = re.compile(r"^\s*単勝\s+(\d)\s+(\d+)")
 WIND = re.compile(r"風\s*(\S+?)\s+(\d+)m")
 DEADLINE = re.compile(r"締切予定\s*(\d{1,2}:\d{2})")
 WAVE = re.compile(r"波\s*(\d+)cm")
+# 決まり手は成績の見出し行 (着 艇 登番 … ﾚｰｽﾀｲﾑ) の末尾にある。NFKC で ﾚｰｽﾀｲﾑ → レースタイム
+KIMARITE_TYPES = ("逃げ", "差し", "まくり", "まくり差し", "抜き", "恵まれ")
+KIMARITE = re.compile(r"レースタイム\s+(\S+)")
 
 
 def _norm(line: str) -> str:
@@ -103,7 +106,7 @@ def parse_result(text: str, race_date: date) -> tuple[list[dict], list[dict]]:
                     "race_no": int(m.group(1)), "race_name": m.group(2).strip(),
                     "distance": int(m.group(3)), "trifecta": None,
                     "trifecta_payout": None, "win_payout": None,
-                    "wind_dir": None, "wind_speed": None, "wave": None}
+                    "wind_dir": None, "wind_speed": None, "wave": None, "kimarite": None}
             if w := WIND.search(line):
                 race["wind_dir"], race["wind_speed"] = w.group(1), int(w.group(2))
             if w := WAVE.search(line):
@@ -111,6 +114,9 @@ def parse_result(text: str, race_date: date) -> tuple[list[dict], list[dict]]:
             races.append(race)
             continue
         if race is None:
+            continue
+        if m := KIMARITE.search(line):
+            race["kimarite"] = m.group(1) if m.group(1) in KIMARITE_TYPES else None
             continue
         if m := TRIFECTA.match(line):
             race["trifecta"], race["trifecta_payout"] = m.group(1), int(m.group(2))
