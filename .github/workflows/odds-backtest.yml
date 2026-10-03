@@ -21,6 +21,9 @@ on:
       budget_minutes:
         description: "オッズの取得に使う時間の上限 (分)"
         default: "270"
+      kind:
+        description: "win (単勝) / trifecta (3連単)"
+        default: "win"
 
 permissions:
   contents: read
@@ -66,22 +69,25 @@ jobs:
           IN_CUTOFF: ${{ inputs.cutoff }}
           IN_SAMPLE: ${{ inputs.sample }}
           IN_BUDGET: ${{ inputs.budget_minutes }}
+          IN_KIND: ${{ inputs.kind }}
         run: |
-          CUTOFF="$IN_CUTOFF"; SAMPLE="$IN_SAMPLE"; BUDGET="$IN_BUDGET"
+          CUTOFF="$IN_CUTOFF"; SAMPLE="$IN_SAMPLE"; BUDGET="$IN_BUDGET"; KIND="$IN_KIND"
           if [ -f odds-request.txt ] && [ -z "$CUTOFF" ]; then
             CUTOFF=$(sed -n 's/^cutoff=//p' odds-request.txt | tr -d '[:space:]')
             SAMPLE=$(sed -n 's/^sample=//p' odds-request.txt | tr -d '[:space:]')
             BUDGET=$(sed -n 's/^budget_minutes=//p' odds-request.txt | tr -d '[:space:]')
+            KIND=$(sed -n 's/^kind=//p' odds-request.txt | tr -d '[:space:]')
           fi
-          CUTOFF=${CUTOFF:-2025-10-01}; SAMPLE=${SAMPLE:-2000}; BUDGET=${BUDGET:-270}
+          CUTOFF=${CUTOFF:-2025-10-01}; SAMPLE=${SAMPLE:-2000}; BUDGET=${BUDGET:-270}; KIND=${KIND:-win}
+          [[ "$KIND" =~ ^(win|trifecta)$ ]] || { echo "kind は win / trifecta: $KIND"; exit 1; }
           # 値はコマンドに渡すので形式を確かめる。取得数と時間には上限を設ける
           [[ "$CUTOFF" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || { echo "cutoff の形式が不正: $CUTOFF"; exit 1; }
           [[ "$SAMPLE" =~ ^[0-9]{1,4}$ ]] && [ "$SAMPLE" -le 3000 ] || { echo "sample は 3000 以下: $SAMPLE"; exit 1; }
           [[ "$BUDGET" =~ ^[0-9]{1,3}$ ]] && [ "$BUDGET" -le 300 ] || { echo "budget_minutes は 300 以下: $BUDGET"; exit 1; }
           {
-            echo "cutoff=$CUTOFF"; echo "sample=$SAMPLE"; echo "budget=$BUDGET"
+            echo "cutoff=$CUTOFF"; echo "sample=$SAMPLE"; echo "budget=$BUDGET"; echo "kind=$KIND"
           } >> "$GITHUB_OUTPUT"
-          echo "cutoff=$CUTOFF sample=$SAMPLE budget_minutes=$BUDGET"
+          echo "cutoff=$CUTOFF sample=$SAMPLE budget_minutes=$BUDGET kind=$KIND"
 
       - name: Fetch odds (one at a time, within the time budget)
         env:
@@ -89,7 +95,8 @@ jobs:
           CUTOFF: ${{ steps.params.outputs.cutoff }}
           SAMPLE: ${{ steps.params.outputs.sample }}
           BUDGET: ${{ steps.params.outputs.budget }}
-        run: python -m boatrace.cli odds-fetch --cutoff "$CUTOFF" --sample "$SAMPLE" --budget-minutes "$BUDGET"
+          KIND: ${{ steps.params.outputs.kind }}
+        run: python -m boatrace.cli odds-fetch --cutoff "$CUTOFF" --sample "$SAMPLE" --budget-minutes "$BUDGET" --kind "$KIND"
 
       - name: Save odds cache
         if: always()
@@ -102,8 +109,9 @@ jobs:
         env:
           BOATRACE_ODDS_DIR: odds_cache
           CUTOFF: ${{ steps.params.outputs.cutoff }}
+          KIND: ${{ steps.params.outputs.kind }}
         run: |
-          python -m boatrace.cli ev-backtest --cutoff "$CUTOFF" --report report.md
+          python -m boatrace.cli ev-backtest --cutoff "$CUTOFF" --kind "$KIND" --report report.md
           cat report.md >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4

@@ -110,3 +110,36 @@ def test_parse_exacta_and_trifecta_real_pages():
     e = exacta_probs(lanes, p)
     assert set(e["combo"]) == {"-".join(map(str, k)) for k in ex}
     assert e["prob"].sum() == pytest.approx(1.0)
+
+
+def test_trifecta_report_on_synthetic_odds(tmp_path):
+    from boatrace.ev import trifecta_report
+    from boatrace.model import trifecta_probs
+    conn, feat = _feat(tmp_path, 40)
+    races = db.load_races(conn)
+    rows = training_rows(feat)
+    test = rows[rows["race_date"] >= "2026-02-01"]
+    # 市場の確率 = 枠の1着率から Harville (控除率25%) とした合成オッズ
+    rate = rows.groupby("lane")["win"].mean()
+    parts = []
+    for key, g in list(test.groupby(["race_date", "venue", "race_no"]))[:150]:
+        t = trifecta_probs(g["lane"].tolist(), g["lane"].map(rate).tolist())
+        parts.append(t.assign(race_date=key[0], venue=key[1], race_no=key[2], odds=(0.75 / t["prob"]).round(1)))
+    tri = pd.concat(parts)[["race_date", "venue", "race_no", "combo", "odds"]]
+    text = trifecta_report(feat, races, tri, "2026-02-01")
+    for heading in ("## 確率の当たり具合", "## 買い方ごとの回収率", "全組を買う", "EV≥1.5", "## 注意"):
+        assert heading in text
+    assert "150 レース" in text
+    assert "オッズを取得済みのレースがありません" in trifecta_report(feat, races, tri.iloc[:0], "2026-02-01")
+
+
+def test_trifecta_cache(tmp_path):
+    html = (Path(__file__).parent / "fixtures" / "odds3t_20260928_19_12.html").read_text(encoding="utf-8")
+    import boatrace.odds as od
+    s = FakeSession(html)
+    rec = od.fetch_trifecta_cached("2026-09-28", 19, 12, session=s, odds_dir=tmp_path)
+    assert rec["final"] and rec["odds"]["6-4-1"] == 485.0
+    assert od.fetch_trifecta_cached("2026-09-28", 19, 12, session=s, odds_dir=tmp_path)["odds"]["1-2-3"] == 6.6
+    assert len(s.urls) == 1 and "odds3t" in s.urls[0]
+    df = od.load_cached_trifecta(tmp_path)
+    assert len(df) == 120 and od.load_cached(tmp_path).empty  # 単勝のキャッシュとは混ざらない

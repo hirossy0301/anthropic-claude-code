@@ -87,8 +87,10 @@ def main(argv=None) -> None:
     s.add_argument("--sample", type=int, default=2000, help="抽出するレース数")
     s.add_argument("--seed", type=int, default=0, help="同じ値なら同じ抽出 (途中から再開できる)")
     s.add_argument("--budget-minutes", type=float, default=270, help="取得に使う時間の上限 (分)")
+    s.add_argument("--kind", choices=["win", "trifecta"], default="win", help="単勝 / 3連単")
     s = sub.add_parser("ev-backtest")
     s.add_argument("--cutoff", required=True)
+    s.add_argument("--kind", choices=["win", "trifecta"], default="win", help="単勝 / 3連単")
     s.add_argument("--report", type=Path, help="Markdown で保存")
     s = sub.add_parser("paper-trade")
     s.add_argument("--venues", type=int, default=4, help="記録する場の数 (日付で決まる無作為抽出)")
@@ -172,12 +174,17 @@ def main(argv=None) -> None:
         from .odds import fetch_sample, sample_races
         keys = sample_races(db.load_races(db.connect()), a.cutoff, a.sample, a.seed)
         print(f"{len(keys)} レースを抽出 (cutoff {a.cutoff}, seed {a.seed})")
-        print(fetch_sample(keys, a.budget_minutes))
+        print(fetch_sample(keys, a.budget_minutes, kind=a.kind))
     elif a.cmd == "ev-backtest":
-        from .ev import report
-        from .odds import load_cached
         feat, races = load_features()
-        text = report(feat, races, load_cached(), a.cutoff)
+        if a.kind == "trifecta":
+            from .ev import trifecta_report
+            from .odds import load_cached_trifecta
+            text = trifecta_report(feat, races, load_cached_trifecta(), a.cutoff)
+        else:
+            from .ev import report
+            from .odds import load_cached
+            text = report(feat, races, load_cached(), a.cutoff)
         if a.report:
             a.report.write_text(text, encoding="utf-8")
         print(text)

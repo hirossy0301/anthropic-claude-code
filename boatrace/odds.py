@@ -131,6 +131,38 @@ def cache_path(race_date: str, venue: int, race_no: int, odds_dir: Path | None =
     return (odds_dir or config.ODDS_DIR) / f"{race_date.replace('-', '')}_{venue:02d}_{race_no:02d}.json"
 
 
+def trifecta_cache_path(race_date: str, venue: int, race_no: int, odds_dir: Path | None = None) -> Path:
+    """3連単の締切時オッズのキャッシュ (単勝と混ざらないようサブフォルダに置く)。"""
+    return (odds_dir or config.ODDS_DIR) / "trifecta" / f"{race_date.replace('-', '')}_{venue:02d}_{race_no:02d}.json"
+
+
+def fetch_trifecta_cached(race_date: str, venue: int, race_no: int, session: requests.Session | None = None,
+                          odds_dir: Path | None = None) -> dict:
+    """3連単の締切時オッズを取得し、締切時のものだけキャッシュする。"""
+    path = trifecta_cache_path(race_date, venue, race_no, odds_dir)
+    if path.exists():
+        return json.loads(path.read_text(encoding="utf-8"))
+    rec = fetch_combo_odds("trifecta", race_date, venue, race_no, session=session)
+    out = {"race_date": race_date, "venue": venue, "race_no": race_no, "final": rec["final"],
+           "odds": {"-".join(map(str, k)): v for k, v in rec["odds"].items()}}
+    if out["final"]:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        tmp.replace(path)
+    return out
+
+
+def load_cached_trifecta(odds_dir: Path | None = None) -> pd.DataFrame:
+    """キャッシュ済みの3連単の締切時オッズを1組1行で返す (race_date, venue, race_no, combo, odds)。"""
+    rows = []
+    for p in sorted(((odds_dir or config.ODDS_DIR) / "trifecta").glob("*.json")):
+        rec = json.loads(p.read_text(encoding="utf-8"))
+        rows += [{"race_date": rec["race_date"], "venue": int(rec["venue"]), "race_no": int(rec["race_no"]),
+                  "combo": c, "odds": o} for c, o in rec["odds"].items()]
+    return pd.DataFrame(rows, columns=["race_date", "venue", "race_no", "combo", "odds"])
+
+
 def _session() -> requests.Session:
     s = requests.Session()
     s.headers["User-Agent"] = USER_AGENT
@@ -181,18 +213,20 @@ def sample_races(races: pd.DataFrame, start: str, n: int, seed: int = 0) -> list
 
 
 def fetch_sample(keys, budget_minutes: float, odds_dir: Path | None = None, log=print,
-                 interval: float = ODDS_INTERVAL) -> dict:
-    """keys のうち未取得のものを、時間の上限まで1本ずつ取得する。"""
+                 interval: float = ODDS_INTERVAL, kind: str = "win") -> dict:
+    """keys のうち未取得のものを、時間の上限まで1本ずつ取得する。kind は "win" (単勝) / "trifecta" (3連単)。"""
+    path_of, fetch = ((cache_path, fetch_win_odds) if kind == "win"
+                      else (trifecta_cache_path, fetch_trifecta_cached))
     deadline = time.monotonic() + budget_minutes * 60
     session = _session()
-    todo = [k for k in keys if not cache_path(*k, odds_dir).exists()]
+    todo = [k for k in keys if not path_of(*k, odds_dir).exists()]
     stats = {"cached": len(keys) - len(todo), "fetched": 0, "not_final": 0, "errors": 0}
     for i, key in enumerate(todo):
         if time.monotonic() > deadline:
             log(f"時間の上限に達したので終了 (残り {len(todo) - i} レースは次回)")
             break
         try:
-            rec = fetch_win_odds(*key, session=session, odds_dir=odds_dir)
+            rec = fetch(*key, session=session, odds_dir=odds_dir)
             stats["fetched" if rec["final"] else "not_final"] += 1
         except Exception as e:  # 1レースの失敗で止めない (キャッシュされないので次回取り直す)
             stats["errors"] += 1
@@ -200,7 +234,7 @@ def fetch_sample(keys, budget_minutes: float, odds_dir: Path | None = None, log=
         if (i + 1) % 50 == 0:
             log(f"{i + 1}/{len(todo)} {stats}")
         time.sleep(interval)
-    stats["remaining"] = sum(not cache_path(*k, odds_dir).exists() for k in keys)
+    stats["remaining"] = sum(not path_of(*k, odds_dir).exists() for k in keys)
     return stats
 
 
