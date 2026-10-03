@@ -89,3 +89,24 @@ def test_ev_report_on_synthetic_odds(tmp_path):
                     "## 買い方ごとの回収率", "全艇を買う", "EV≥1.2", "## 注意"):
         assert heading in text
     assert "オッズを取得済みのレースがありません" in report(feat, races, o.iloc[:0], "2026-02-01")
+
+
+def test_parse_exacta_and_trifecta_real_pages():
+    from boatrace.model import exacta_probs, trifecta_probs
+    fix = Path(__file__).parent / "fixtures"
+    tri_html = (fix / "odds3t_20260928_19_12.html").read_text(encoding="utf-8")
+    ex_html = (fix / "odds2tf_20260928_19_12.html").read_text(encoding="utf-8")
+    tri, ex = odds.parse_trifecta_odds(tri_html), odds.parse_exacta_odds(ex_html)
+    assert len(tri) == 120 and len(ex) == 30
+    # 2026-09-28 下関 12R の払戻: 3連単 6-4-1 48,500円、2連単 6-4 8,440円
+    assert tri[(6, 4, 1)] == 485.0 and ex[(6, 4)] == 84.4
+    assert tri[(1, 2, 3)] == 6.6 and tri[(2, 1, 3)] == 27.1 and ex[(1, 2)] == 3.0
+    # 控除率 約25% なので 1/オッズ の合計は約 1.33
+    assert sum(1 / v for v in tri.values()) == pytest.approx(1.336, abs=0.01)
+    assert odds.is_final(tri_html)
+    # モデル側の組番と同じ表記で引けること
+    lanes, p = [1, 2, 3, 4, 5, 6], [0.5, 0.2, 0.1, 0.1, 0.05, 0.05]
+    assert set(trifecta_probs(lanes, p)["combo"]) == {"-".join(map(str, k)) for k in tri}
+    e = exacta_probs(lanes, p)
+    assert set(e["combo"]) == {"-".join(map(str, k)) for k in ex}
+    assert e["prob"].sum() == pytest.approx(1.0)

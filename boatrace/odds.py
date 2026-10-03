@@ -44,6 +44,85 @@ def parse_win_odds(html: str) -> dict[int, float | None]:
     return out
 
 
+_CELL = re.compile(r'<td class="([^"]*)"(\s+rowspan="\d+")?>\s*([^<]*?)\s*</td>')
+
+
+def _odds_value(text: str) -> float | None:
+    try:
+        o = float(text)
+    except ValueError:
+        return None
+    return o if o > 0 else None
+
+
+def parse_exacta_odds(html: str) -> dict[tuple[int, int], float | None]:
+    """2連単オッズの表から {(1着, 2着): オッズ} を返す。
+
+    表は列ごとに1着の艇 (1〜6) で、各行に「2着の艇・オッズ」の組が6列分並ぶ。
+    """
+    start, end = html.find("2連単オッズ"), html.find("2連複オッズ")
+    if start < 0:
+        return {}
+    body = html[start:end if end > start else None]
+    body = body[body.find("<tbody"):]
+    out, col, second = {}, 0, None
+    for cls, _, text in _CELL.findall(body):
+        if "oddsPoint" in cls:
+            if second is not None:
+                out[(col + 1, second)] = _odds_value(text)
+            col, second = (col + 1) % 6, None
+        elif text.isdigit():
+            second = int(text)
+    return out
+
+
+def parse_trifecta_odds(html: str) -> dict[tuple[int, int, int], float | None]:
+    """3連単オッズの表から {(1着, 2着, 3着): オッズ} を返す (120通り)。
+
+    表は列ごとに1着の艇。2着の艇は4行にまたがるセル (rowspan="4") で、各行に「3着の艇・オッズ」が並ぶ。
+    """
+    start = html.find("3連単オッズ")
+    if start < 0:
+        return {}
+    body = html[start:]
+    body = body[body.find("<tbody"):body.find("</table>")]
+    out, col = {}, 0
+    second: dict[int, int] = {}
+    third = None
+    for cls, rowspan, text in _CELL.findall(body):
+        if "oddsPoint" in cls:
+            if third is not None and col in second:
+                out[(col + 1, second[col], third)] = _odds_value(text)
+            col, third = (col + 1) % 6, None
+        elif rowspan and text.isdigit():
+            second[col] = int(text)
+        elif text.isdigit():
+            third = int(text)
+    return out
+
+
+PAGES = {"exacta": ("odds2tf", parse_exacta_odds), "trifecta": ("odds3t", parse_trifecta_odds)}
+PAGE_URL = "https://www.boatrace.jp/owpc/pc/race/{page}?rno={race}&jcd={venue:02d}&hd={hd}"
+
+
+def fetch_combo_odds(kind: str, race_date: str, venue: int, race_no: int,
+                     session: requests.Session | None = None, retries: int = 3) -> dict:
+    """2連単 ("exacta") / 3連単 ("trifecta") のオッズを1ページ取得する: {"final": 締切時か, "odds": {組: オッズ}}。"""
+    page, parser = PAGES[kind]
+    session = session or _session()
+    url = PAGE_URL.format(page=page, race=race_no, venue=venue, hd=race_date.replace("-", ""))
+    for attempt in range(retries):
+        try:
+            resp = session.get(url, timeout=60)
+            resp.raise_for_status()
+            break
+        except requests.RequestException:
+            if attempt == retries - 1:
+                raise
+            time.sleep(10 * (attempt + 1))
+    return {"final": is_final(resp.text), "odds": parser(resp.text)}
+
+
 def is_final(html: str) -> bool:
     return FINAL_MARK in html
 

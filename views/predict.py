@@ -6,7 +6,7 @@ from boatrace import config, serve
 from boatrace.cli import KIMARITE_MODEL, load_features, predict_race
 from boatrace.features import KIMARITE_HISTORY
 from boatrace.kimarite import DECIDED_AT_TURN1, KimariteModel, race_outlook
-from boatrace.model import WinModel
+from boatrace.model import WinModel, exacta_probs, trifecta_probs
 from boatrace.venues import SURFACE_LABEL, VENUE_INFO, WATER_LABEL, WIND_DEG
 
 st.title("競艇 統計予想")
@@ -240,5 +240,43 @@ with st.expander("単勝オッズと期待値（公式サイトから取得）")
                                             "期待値": "{:.2f}"}, na_rep="-"), hide_index=True)
                 st.caption("バックテストでは、締切時オッズでもこの期待値で買って控除率（約25%）を上回れるかは確かめられていません。"
                            "1を超えた艇があっても、利益を保証するものではありません。")
+
+@st.cache_data(ttl=60, show_spinner="公式サイトからオッズを取得中…")
+def cached_combo_odds(kind: str, race_date: str, venue: int, race_no: int) -> dict:
+    """同じレース・賭け式は60秒以内なら取り直さない。"""
+    from boatrace.odds import fetch_combo_odds
+    rec = fetch_combo_odds(kind, race_date, venue, race_no)
+    return {"final": rec["final"], "odds": {"-".join(map(str, k)): v for k, v in rec["odds"].items()}}
+
+
+with st.expander("2連単・3連単のオッズと期待値（公式サイトから取得）"):
+    st.caption("ボタンを押した賭け式のオッズページを1回だけ取得します。期待値 = 確率 × オッズ。"
+               "2着・3着の確率は1着確率から計算式（Harville）で組み立てているため偏りがあり、"
+               "**この期待値で買って儲かるかはまだ検証していません**。私的使用の範囲で、取得したオッズは他の人に配らないでください。")
+    b1, b2, b3 = st.columns(3)
+    kind = None
+    if b1.button("2連単オッズを取得"):
+        kind = "exacta"
+    if b2.button("3連単オッズを取得"):
+        kind = "trifecta"
+    min_ev = b3.number_input("表示する期待値の下限", 0.0, 5.0, 0.0, 0.1)
+    if kind:
+        try:
+            rec = cached_combo_odds(kind, race_date, int(venue), int(race_no))
+        except Exception as e:
+            st.error(f"オッズを取得できませんでした: {e}")
+        else:
+            if not rec["odds"]:
+                st.warning("オッズがまだ発表されていないか、このレースのオッズがありません。")
+            else:
+                probs = (exacta_probs if kind == "exacta" else trifecta_probs)(g["lane"].tolist(), g["win_prob"].tolist())
+                probs["odds"] = probs["combo"].map(rec["odds"])
+                probs["ev"] = probs["prob"] * probs["odds"]
+                view = probs[probs["ev"].fillna(0) >= min_ev].sort_values("ev", ascending=False)
+                st.write(("締切時オッズ（確定）" if rec["final"] else "締切前のオッズ（締切まで変わります）")
+                         + f" ／ {len(view)}通り（期待値の高い順）")
+                st.dataframe(view.rename(columns={"combo": "組番", "prob": "確率", "odds": "オッズ", "ev": "期待値"})
+                             .style.format({"確率": "{:.2%}", "オッズ": "{:.1f}", "期待値": "{:.2f}"}, na_rep="-"),
+                             hide_index=True, height=420)
 
 st.caption("確率は過去データからの統計的推定であり、的中や利益を保証するものではありません。")

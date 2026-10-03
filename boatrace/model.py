@@ -107,6 +107,14 @@ class WinModel:
         return pickle.loads(path.read_bytes())
 
 
+def exacta_probs(lanes: list[int], win_probs: list[float]) -> pd.DataFrame:
+    """1着確率から 2連単 30通りの確率を計算する (Harville): P(a-b) = p_a * p_b / (1 - p_a)。"""
+    p = dict(zip(lanes, win_probs))
+    rows = [{"combo": f"{a}-{b}", "prob": p[a] * (p[b] / (1 - p[a]) if p[a] < 1 else 0)}
+            for a, b in itertools.permutations(lanes, 2)]
+    return pd.DataFrame(rows).sort_values("prob", ascending=False).reset_index(drop=True)
+
+
 def trifecta_probs(lanes: list[int], win_probs: list[float]) -> pd.DataFrame:
     """1着確率から 3連単 120通りの確率を Plackett-Luce (Harville) モデルで計算する。
 
