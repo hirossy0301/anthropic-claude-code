@@ -73,7 +73,7 @@ python -m venv .venv
 
 ## デプロイ（Streamlit Community Cloud）
 
-GitHub Actions（`.github/workflows/daily-update`）が毎朝 06:17 / 09:17（日本時間）に次を自動実行し、`serve/` をコミットします。
+GitHub Actions（`.github/workflows/daily-update`）が毎朝 05:47 / 06:47 / 09:17（日本時間、GitHub の定期実行は飛ばされることがあるため3回）に次を自動実行し、`serve/` をコミットします。
 
 1. 前日までの DB を Actions のキャッシュから復元（無い場合は3年分を取り直す。約3時間）
 2. 前日の成績・当日と翌日の番組表・気温を取り込む（未確定の成績は保存せず、次回取り直す）

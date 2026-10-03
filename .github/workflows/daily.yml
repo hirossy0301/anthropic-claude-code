@@ -5,8 +5,10 @@ name: daily-update
 
 on:
   schedule:
-    # 毎時0分・30分は GitHub の定期実行が混んで遅延・取りこぼしが起きやすいので避ける
-    - cron: "17 21 * * *"  # 毎日 06:17 JST
+    # GitHub の定期実行は混雑時に遅れたり飛ばされたりする (2026-10-03 は 06:17 の回が実行されなかった)。
+    # 毎時0分・30分を避け、朝に3回置いて、どれかが飛ばされても次の回で取り戻せるようにする
+    - cron: "47 20 * * *"  # 毎日 05:47 JST
+    - cron: "47 21 * * *"  # 毎日 06:47 JST
     - cron: "17 0 * * *"   # 毎日 09:17 JST (朝の時点で番組表が未公開だった場合の取り直し)
   workflow_dispatch:
     inputs:
@@ -62,17 +64,19 @@ jobs:
         env:
           SEEDED: ${{ steps.cache.outputs.cache-matched-key == '' }}
           REQUESTED: ${{ inputs.retrain == true }}
-          EVENT_SCHEDULE: ${{ github.event.schedule }}
         run: |
-          # 月曜 06:17 JST の回 (UTC では日曜 21:17) に週1回再学習する
+          # 週1回、月曜 (日本時間) の最初に動いた回で再学習する。その日すでに学習済みなら同じ日の後の回では学習しない
           WEEKLY=false
-          if [ "$EVENT_SCHEDULE" = "17 21 * * *" ] && [ "$(date -u +%u)" = "7" ]; then WEEKLY=true; fi
+          TODAY=$(TZ=Asia/Tokyo date +%F)
+          TRAINED_ON=$(cat serve/trained_on.txt 2>/dev/null || echo none)
+          if [ "$(TZ=Asia/Tokyo date +%u)" = "1" ] && [ "$TRAINED_ON" != "$TODAY" ]; then WEEKLY=true; fi
           # モデルの作り方が変わった (serve/model_version.txt がコードの MODEL_VERSION と違う) ときも再学習する
           CODE_VERSION=$(python -c "from boatrace import config; print(config.MODEL_VERSION)")
           SERVED_VERSION=$(cat serve/model_version.txt 2>/dev/null || echo none)
           if [ "$SEEDED" = "true" ] || [ "$REQUESTED" = "true" ] || [ "$WEEKLY" = "true" ] \
              || [ ! -f serve/model_morning.pkl ] || [ "$CODE_VERSION" != "$SERVED_VERSION" ]; then
             python -m boatrace.cli train --out-dir serve
+            echo "$TODAY" > serve/trained_on.txt
           else
             echo "skip retrain"
           fi
