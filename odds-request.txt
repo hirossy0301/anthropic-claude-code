@@ -4,4 +4,6 @@
 cutoff=2025-10-01
 sample=2000
 budget_minutes=270
-run=2
+# kind: win (単勝) / trifecta (3連単)。同じ seed なので単勝と同じ 2,000 レースを取得する
+kind=trifecta
+run=3
