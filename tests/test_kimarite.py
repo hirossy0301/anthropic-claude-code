@@ -57,3 +57,24 @@ def test_outlook_sums_to_one_and_report(tmp_path):
     text = report(feat, "2026-02-01")
     for heading in ("## 勝った艇が分かっているとき", "## レース全体の決まり手", "## 「逃げ」の確率の較正"):
         assert heading in text
+
+
+def test_place_model_probabilities(tmp_path):
+    from boatrace.place import PlaceModel, harville_combos, compare
+    conn, feat = _feat(tmp_path, 30)
+    rows = training_rows(feat)
+    pm = PlaceModel().fit(rows[rows["race_date"] < "2026-01-20"])
+    test = rows[rows["race_date"] >= "2026-01-20"].copy()
+    test["p_win"] = WinModel(features=list(FEATURE_SETS["morning"])).fit(rows).predict_win_prob(test).to_numpy()
+    tri, ex = pm.combo_probs(test, "p_win")
+    by_race = tri.groupby(RACE_KEYS)["prob"]
+    assert (by_race.size() == 120).all() and np.allclose(by_race.sum(), 1)
+    assert (ex.groupby(RACE_KEYS)["prob"].size() == 30).all() and np.allclose(ex.groupby(RACE_KEYS)["prob"].sum(), 1)
+    # 2連単の a-b は、3連単の a-b-* の合計と一致する
+    t = tri.assign(ab=tri["combo"].str.rsplit("-", n=1).str[0]).groupby(RACE_KEYS + ["ab"])["prob"].sum()
+    e = ex.set_index(RACE_KEYS + ["combo"])["prob"]
+    assert np.allclose(t.sort_index().to_numpy(), e.sort_index().to_numpy())
+    h_tri, _ = harville_combos(test, "p_win")
+    assert len(h_tri) == len(tri)
+    table = compare(test, db.load_races(conn), "p_win", pm, n_races=100)
+    assert list(table.index) == ["3連単", "2連単"]

@@ -188,25 +188,18 @@ def report(feat: pd.DataFrame, races: pd.DataFrame, odds: pd.DataFrame, cutoff: 
 TRIFECTA_THRESHOLDS = (1.0, 1.2, 1.5, 2.0, 3.0)
 
 
-def trifecta_frame(test: pd.DataFrame, tri_odds: pd.DataFrame, races: pd.DataFrame, prob_col: str) -> pd.DataFrame:
-    """1組1行: モデルの3連単確率 (Harville)、締切時オッズ、市場の確率、的中、払戻。120通りすべてにオッズがあるレースだけ。"""
-    from .model import trifecta_probs
+def trifecta_frame(combos: pd.DataFrame, tri_odds: pd.DataFrame, races: pd.DataFrame) -> pd.DataFrame:
+    """1組1行: モデルの3連単確率 (combos: RACE_KEYS, combo, prob)、締切時オッズ、市場の確率、的中、払戻。
 
+    120通りすべてにオッズがあり、3連単が確定したレースだけ。
+    """
     ok = tri_odds.groupby(RACE_KEYS)["odds"].agg(lambda s: s.notna().sum() == 120)
     tri_odds = tri_odds.set_index(RACE_KEYS).loc[ok[ok].index].reset_index()
-    parts = []
-    for key, g in test.groupby(RACE_KEYS):
-        if len(g) != 6:
-            continue
-        t = trifecta_probs(g["lane"].tolist(), g[prob_col].tolist())
-        parts.append(t.assign(race_date=key[0], venue=key[1], race_no=key[2]))
-    if not parts:
-        return pd.DataFrame()
-    m = pd.concat(parts, ignore_index=True).merge(tri_odds, on=RACE_KEYS + ["combo"], how="inner")
+    m = combos.merge(tri_odds, on=RACE_KEYS + ["combo"], how="inner")
     m = m.merge(races[RACE_KEYS + ["trifecta", "trifecta_payout"]], on=RACE_KEYS, how="inner")
     m = m[m.groupby(RACE_KEYS)["combo"].transform("size") == 120]
     m["win"] = (m["combo"] == m["trifecta"]).astype(int)
-    m = m[m.groupby(RACE_KEYS)["win"].transform("sum") == 1]  # 3連単が確定したレースだけ
+    m = m[m.groupby(RACE_KEYS)["win"].transform("sum") == 1]
     m["win_payout"] = m["trifecta_payout"]
     m["market"] = 1 / m["odds"]
     m["market"] /= m.groupby(RACE_KEYS)["market"].transform("sum")
@@ -220,32 +213,46 @@ def trifecta_report(feat: pd.DataFrame, races: pd.DataFrame, tri_odds: pd.DataFr
     test = test[test.set_index(RACE_KEYS).index.isin(tri_odds.set_index(RACE_KEYS).index.unique())]
     if test.empty:
         return f"# 3連単の期待値バックテスト\n\ncutoff {cutoff} 以降で、3連単オッズを取得済みのレースがありません。"
+    from .place import PlaceModel, compare, harville_combos
+
     model = WinModel(features=list(FEATURE_SETS["morning"]), calibrate=config.CALIBRATE).fit(train)
+    place = PlaceModel().fit(train)
     test["p_win"] = model.predict_win_prob(test).to_numpy()
-    m = trifecta_frame(test, tri_odds, races, "p_win")
+    h_tri, _ = harville_combos(test, "p_win")
+    p_tri, _ = place.combo_probs(test, "p_win")
+    m = trifecta_frame(h_tri, tri_odds, races)
     if m.empty:
         return "# 3連単の期待値バックテスト\n\n120通りのオッズと結果がそろうレースがありません。"
+    m = m.merge(p_tri.rename(columns={"prob": "p_place"}), on=RACE_KEYS + ["combo"], how="left")
     n_races = m.groupby(RACE_KEYS).ngroups
     winners = m[m["win"] == 1]
     agree = float((np.round(winners["odds"] * 100) == winners["trifecta_payout"]).mean())
 
-    ll_model, ll_market = _log_loss(m, "p_model"), _log_loss(m, "market")
-    d = ll_model - ll_market
-    se = d.std(ddof=1) / np.sqrt(len(d))
+    ll_market = _log_loss(m, "market")
+
+    def vs_market(col: str) -> str:
+        d = _log_loss(m, col) - ll_market
+        se = d.std(ddof=1) / np.sqrt(len(d))
+        return f"{d.mean():+.4f} [{d.mean() - 1.96 * se:+.4f}, {d.mean() + 1.96 * se:+.4f}]"
     out = [
         f"# 3連単の期待値バックテスト（cutoff {cutoff}）",
         f"- 学習: {train['race_date'].min()}〜{train['race_date'].max()} ／ 検証: 締切時の3連単オッズが120通りそろい、"
         f"結果が確定した {n_races:,} レース（{m['race_date'].min()}〜{m['race_date'].max()}）",
-        f"- 確率: 朝のモデル（較正あり）の1着確率から Harville で120通りを計算",
+        "- 確率: 朝のモデル（較正あり）の1着確率から、Harville（計算式）と着順モデル（2着・3着を学習）で120通りを計算",
         f"- 確認: 的中した組の オッズ×100 と3連単払戻の一致率 {agree:.1%}",
         "",
         "## 確率の当たり具合（実際の3連単に付けた確率）",
         "",
         _md(pd.DataFrame([
             {"確率": "市場（オッズから逆算）", "対数損失": f"{ll_market.mean():.4f}", "モデル − 市場": "-"},
-            {"確率": "モデル（Harville）", "対数損失": f"{ll_model.mean():.4f}",
-             "モデル − 市場": f"{d.mean():+.4f} [{d.mean() - 1.96 * se:+.4f}, {d.mean() + 1.96 * se:+.4f}]"},
+            {"確率": "Harville", "対数損失": f"{_log_loss(m, 'p_model').mean():.4f}", "モデル − 市場": vs_market("p_model")},
+            {"確率": "着順モデル", "対数損失": f"{_log_loss(m, 'p_place').mean():.4f}", "モデル − 市場": vs_market("p_place")},
         ]).set_index("確率")),
+        "",
+        "## Harville と着順モデル（オッズを取得していない検証期間のレースも使う、無作為 5,000 レース）",
+        "実際の3連単・2連単に付けた確率の対数損失。差はマイナスなら着順モデルが良い。",
+        "",
+        _md(compare(test, races, "p_win", place)),
         "",
     ]
     dates = np.sort(m["race_date"].unique())
@@ -253,17 +260,17 @@ def trifecta_report(feat: pd.DataFrame, races: pd.DataFrame, tri_odds: pd.DataFr
     first, second = m[m["race_date"] < split], m[m["race_date"] >= split].copy()
     blend_cols = {}
     if len(first) and len(second):
-        a, b = fit_blend(first, "p_model")
-        second["blend"] = apply_blend(second, "p_model", a, b).to_numpy()
+        a, b = fit_blend(first, "p_place")
+        second["blend"] = apply_blend(second, "p_place", a, b).to_numpy()
         d2 = _log_loss(second, "blend") - _log_loss(second, "market")
         se2 = d2.std(ddof=1) / np.sqrt(len(d2))
         out += ["## モデルに市場が織り込んでいない情報があるか",
-                f"前半で p ∝ モデル^a × 市場^b を決め（a = {a:.2f}, b = {b:.2f}）、後半（{split}〜）で市場と比べる: "
+                f"前半で p ∝ 着順モデル^a × 市場^b を決め（a = {a:.2f}, b = {b:.2f}）、後半（{split}〜）で市場と比べる: "
                 f"対数損失の差 {d2.mean():+.4f} [{d2.mean() - 1.96 * se2:+.4f}, {d2.mean() + 1.96 * se2:+.4f}]", ""]
         blend_cols = {"組み合わせ": "blend"}
 
     fmt = {"点数": "{:,.0f}", "的中率": "{:.2%}", "平均オッズ": "{:.1f}", "回収率": "{:.1%}"}
-    table = strategy_table(m, {"モデル": "p_model"}, TRIFECTA_THRESHOLDS)
+    table = strategy_table(m, {"Harville": "p_model", "着順モデル": "p_place"}, TRIFECTA_THRESHOLDS)
     table.index = [i.replace("全艇を買う", "全組を買う") for i in table.index]
     table.index.name = "買い方"
     out += ["## 買い方ごとの回収率（各100円、締切時オッズ）",
