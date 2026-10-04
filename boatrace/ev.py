@@ -249,7 +249,7 @@ def trifecta_report(feat: pd.DataFrame, races: pd.DataFrame, tri_odds: pd.DataFr
             {"確率": "着順モデル", "対数損失": f"{_log_loss(m, 'p_place').mean():.4f}", "モデル − 市場": vs_market("p_place")},
         ]).set_index("確率")),
         "",
-        "## Harville と着順モデル（オッズを取得していない検証期間のレースも使う、無作為 5,000 レース）",
+        "## Harville と着順モデル（同じレースでの比較）",
         "実際の3連単・2連単に付けた確率の対数損失。差はマイナスなら着順モデルが良い。",
         "",
         _md(compare(test, races, "p_win", place)),

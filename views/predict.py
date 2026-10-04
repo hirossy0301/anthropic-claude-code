@@ -3,7 +3,7 @@ import pandas as pd
 import streamlit as st
 
 from boatrace import config, serve
-from boatrace.cli import KIMARITE_MODEL, load_features, predict_race
+from boatrace.cli import KIMARITE_MODEL, PLACE_MODEL, load_features, predict_race
 from boatrace.features import KIMARITE_HISTORY
 from boatrace.kimarite import DECIDED_AT_TURN1, KimariteModel, race_outlook
 from boatrace.model import WinModel, exacta_probs, trifecta_probs
@@ -139,6 +139,12 @@ if mode == "prerace":
                "wind_speed": 0 if wind_dir == "無風" else wind_speed, "wave": wave, "courses": courses,
                "exhibition_times": exhibition_times}
 
+@st.cache_resource
+def cached_place_model(version: float):
+    from boatrace.place import PlaceModel
+    return PlaceModel.load(MODEL_DIR / PLACE_MODEL)
+
+
 try:
     # 展示タイムがあり、展示タイムありのモデルが学習済みならそちらを使う
     model_name = mode
@@ -148,6 +154,13 @@ try:
         st.caption("使ったモデル: " + ("直前の予想 ＋ 展示タイム" if model_name == "prerace_exh" else
                                     "直前の予想（展示タイムなし）"))
     g, tri = predict_race(feat, cached_model(model_name, _mtime(model_file(model_name))), race_date, venue, race_no, prerace)
+    # 2着・3着の着順モデルがあれば、2連単・3連単の確率はそちらで計算する (Harville より当たる)
+    ex = None
+    place_path = MODEL_DIR / PLACE_MODEL
+    if place_path.exists():
+        p_tri, p_ex = cached_place_model(_mtime(place_path)).race_combos(g, "win_prob")
+        if len(p_tri) == 120:  # 欠場で6艇そろわないレースは Harville のまま
+            tri, ex = p_tri, p_ex
 except ValueError as e:
     st.error(str(e))
     st.stop()
@@ -251,9 +264,9 @@ def cached_combo_odds(kind: str, race_date: str, venue: int, race_no: int) -> di
 
 with st.expander("2連単・3連単のオッズと期待値（公式サイトから取得）"):
     st.warning("**この期待値は参考にしないでください。** 3連単の締切時オッズ 1,307 レースで検証したところ、"
-               "この画面の3連単の確率（1着確率から計算式 Harville で組み立てたもの）はオッズより当たらず"
-               "（対数損失 +0.34）、期待値 1 以上の組を買った場合の回収率は 77%（95%信頼区間 59〜100%）でした。"
-               "2着・3着を直接学習するモデルで改善を検証中です。")
+               "2着・3着を学習した着順モデルでも3連単の確率はオッズより当たらず（対数損失 +0.12）、"
+               "期待値 1 以上の組を買った場合の回収率は 57%（95%信頼区間 45〜70%）でした。"
+               "確率の高い順に見る（予想として使う）のは、計算式（Harville）より当たるようになっています。")
     st.caption("ボタンを押した賭け式のオッズページを1回だけ取得します。期待値 = 確率 × オッズ。"
                "私的使用の範囲で、取得したオッズは他の人に配らないでください。")
     b1, b2, b3 = st.columns(3)
@@ -272,7 +285,12 @@ with st.expander("2連単・3連単のオッズと期待値（公式サイトか
             if not rec["odds"]:
                 st.warning("オッズがまだ発表されていないか、このレースのオッズがありません。")
             else:
-                probs = (exacta_probs if kind == "exacta" else trifecta_probs)(g["lane"].tolist(), g["win_prob"].tolist())
+                if kind == "trifecta":
+                    probs = tri.copy()
+                elif ex is not None:
+                    probs = ex.copy()
+                else:
+                    probs = exacta_probs(g["lane"].tolist(), g["win_prob"].tolist())
                 probs["odds"] = probs["combo"].map(rec["odds"])
                 probs["ev"] = probs["prob"] * probs["odds"]
                 view = probs[probs["ev"].fillna(0) >= min_ev].sort_values("ev", ascending=False)

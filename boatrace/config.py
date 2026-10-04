@@ -16,7 +16,7 @@ ODDS_DIR = Path(os.environ.get("BOATRACE_ODDS_DIR", DATA_DIR / "odds"))
 
 
 # モデルの作り方を変えたら上げる。serve/model_version.txt と違えば daily-update が再学習する
-MODEL_VERSION = 4  # 2: 枠ごとの確率の較正 / 3: 決まり手のモデル / 4: 展示タイムを使う直前モデル (prerace_exh)
+MODEL_VERSION = 5  # 2: 枠ごとの確率の較正 / 3: 決まり手のモデル / 4: 展示タイムを使う直前モデル (prerace_exh) / 5: 2着・3着の着順モデル
 # 枠ごとの確率の較正を本番の学習で使うか。3年分のバックテスト (直近1年 54,339 レース) で
 # 対数損失 -0.0039 [95%CI -0.0047, -0.0031]、1着的中率 +0.26% の改善を確認して有効にした
 CALIBRATE = True

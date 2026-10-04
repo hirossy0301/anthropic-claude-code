@@ -33,6 +33,7 @@ from .model import WinModel, trifecta_probs
 
 
 KIMARITE_MODEL = "model_kimarite.pkl"
+PLACE_MODEL = "model_place.pkl"  # 2着・3着の着順モデル (2連単・3連単の確率)
 
 
 def load_features():
@@ -146,6 +147,9 @@ def main(argv=None) -> None:
         from .kimarite import KimariteModel
         KimariteModel().fit(rows).save(a.out_dir / KIMARITE_MODEL)
         print(f"決まり手 -> {a.out_dir / KIMARITE_MODEL}")
+        from .place import PlaceModel
+        PlaceModel().fit(rows).save(a.out_dir / PLACE_MODEL)
+        print(f"着順 (2着・3着) -> {a.out_dir / PLACE_MODEL}")
         (a.out_dir / "model_version.txt").write_text(f"{config.MODEL_VERSION}\n", encoding="utf-8")
     elif a.cmd == "kimarite-backtest":
         from .kimarite import report
