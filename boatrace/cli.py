@@ -14,6 +14,7 @@
   daily                                          毎朝の更新 (直近の取得→取り込み→気温→書き出し)
   odds-fetch --cutoff 2025-10-01 --sample 2000   検証期間から無作為に選んだレースの締切時単勝オッズを取得
   ev-backtest --cutoff 2025-10-01                取得済みオッズで、単勝の期待値で買うバックテスト
+  ev-sim --cutoff 2025-10-01 --out serve/sim_daily.csv  単勝 EV 買いを毎日の予算で続けた場合の資金の増減
   paper-trade --venues 4                         締切5分前の単勝オッズで期待値を記録 (お金は賭けない。自宅 PC 用)
   paper-report                                   記録を結果と照らし合わせて回収率を出す
   paper-plan / paper-settle                      Supabase で記録する場合の、毎朝の計画の書き込みと精算 (GitHub Actions 用)
@@ -93,6 +94,9 @@ def main(argv=None) -> None:
     s.add_argument("--cutoff", required=True)
     s.add_argument("--kind", choices=["win", "trifecta"], default="win", help="単勝 / 3連単")
     s.add_argument("--report", type=Path, help="Markdown で保存")
+    s = sub.add_parser("ev-sim")
+    s.add_argument("--cutoff", required=True)
+    s.add_argument("--out", type=Path, required=True, help="日ごとの収支を CSV で保存")
     s = sub.add_parser("paper-trade")
     s.add_argument("--venues", type=int, default=4, help="記録する場の数 (日付で決まる無作為抽出)")
     s.add_argument("--minutes-before", type=float, default=5, help="締切の何分前にオッズを取るか")
@@ -192,6 +196,14 @@ def main(argv=None) -> None:
         if a.report:
             a.report.write_text(text, encoding="utf-8")
         print(text)
+    elif a.cmd == "ev-sim":
+        from . import sim
+        from .odds import load_cached
+        feat, races = load_features()
+        df = sim.run(feat, races, load_cached(), a.cutoff)
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        df.to_csv(a.out, index=False)
+        print(sim.summary(df).to_string(index=False) if len(df) else "オッズ取得済みのレースがありません")
     elif a.cmd == "paper-trade":
         from .paper import run
         run(n_venues=a.venues, minutes_before=a.minutes_before)

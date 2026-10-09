@@ -26,7 +26,7 @@ on:
         default: "win"
 
 permissions:
-  contents: read
+  contents: write  # 単勝のときは、資金の増減のシミュレーション結果 (serve/sim_daily.csv) をコミットする
 
 concurrency:
   group: odds-backtest  # 同時に2本走らせて公式サイトへのアクセスが倍にならないように
@@ -113,6 +113,24 @@ jobs:
         run: |
           python -m boatrace.cli ev-backtest --cutoff "$CUTOFF" --kind "$KIND" --report report.md
           cat report.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Daily budget simulation (win only)
+        if: steps.params.outputs.kind == 'win'
+        env:
+          BOATRACE_ODDS_DIR: odds_cache
+          CUTOFF: ${{ steps.params.outputs.cutoff }}
+        run: |
+          python -m boatrace.cli ev-sim --cutoff "$CUTOFF" --out serve/sim_daily.csv
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add serve/sim_daily.csv
+          if git diff --cached --quiet; then
+            echo "no changes"
+          else
+            git commit -m "Update budget simulation $(TZ=Asia/Tokyo date '+%F %H:%M') JST"
+            git pull --rebase origin "${GITHUB_REF_NAME}"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
 
       - uses: actions/upload-artifact@v4
         if: always()
